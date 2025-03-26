@@ -1,0 +1,501 @@
+<!-- Structural Similarity Tab Content -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Structural Similarity Analysis</h5>
+            </div>
+            <div class="card-body">
+                <ul class="nav nav-tabs" id="structuralTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="struct-network-tab" data-bs-toggle="tab" data-bs-target="#struct-network" 
+                                type="button" role="tab" aria-controls="struct-network" aria-selected="true">Network</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="struct-motif-tab" data-bs-toggle="tab" data-bs-target="#struct-motif" 
+                                type="button" role="tab" aria-controls="struct-motif" aria-selected="false">Motif Comparison</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="struct-conservation-tab" data-bs-toggle="tab" data-bs-target="#struct-conservation" 
+                                type="button" role="tab" aria-controls="struct-conservation" aria-selected="false">Residue Conservation</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="struct-enrichment-tab" data-bs-toggle="tab" data-bs-target="#struct-enrichment" 
+                                type="button" role="tab" aria-controls="struct-enrichment" aria-selected="false">Terminus Enrichment</button>
+                    </li>
+                    <!-- Add the kinase prediction tabs -->
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="struct-kinase-tab" data-bs-toggle="tab" data-bs-target="#struct-kinase" 
+                                type="button" role="tab" aria-controls="struct-kinase" aria-selected="false">Kinase Prediction</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="struct-network-kinase-tab" data-bs-toggle="tab" data-bs-target="#struct-network-kinase" 
+                                type="button" role="tab" aria-controls="struct-network-kinase" aria-selected="false">Network Kinase</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="struct-table-tab" data-bs-toggle="tab" data-bs-target="#struct-table" 
+                                type="button" role="tab" aria-controls="struct-table" aria-selected="false">Match Table</button>
+                    </li>
+                </ul>
+                
+                <div class="tab-content border border-top-0 rounded-bottom p-3" id="structuralTabContent">
+                    <!-- Structural Network Visualization Tab -->
+                    <div class="tab-pane fade show active" id="struct-network" role="tabpanel" aria-labelledby="struct-network-tab">
+                        {% if structural_matches and structural_matches|length > 0 %}
+                            <p class="mb-3">This network visualization shows structural relationships between phosphorylation sites. 
+                            The queried site ({{ protein.get('uniprot_id') }}_{{ site }}) is shown in blue at the center, with matches 
+                            connected by edges. Thicker edges indicate stronger structural similarity (lower RMSD).</p>
+                            
+                            <div id="network-container" style="height: 500px; width: 100%; position: relative;"></div>
+                            
+                            <script id="network-data" type="application/json">
+                                {{ structural_matches|tojson|safe if structural_matches else '[]' }}
+                            </script>
+
+                            <!-- RMSD Filter -->
+                            <div class="mt-3">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6>Filter by RMSD</h6>
+                                        <input type="range" class="form-range" id="rmsd-filter" min="0.5" max="10.0" step="0.1" value="10.0">
+                                        <div class="d-flex justify-content-between">
+                                            <small>0.5 Å</small>
+                                            <small>RMSD threshold: <span id="rmsd-value">10.0 Å</span></small>
+                                            <small>10.0 Å</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Color Legend -->
+                            <div class="mt-3">
+                                <div class="card">
+                                    <div class="card-header bg-light">
+                                        <h6 class="mb-0">Color Legend</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="d-flex flex-wrap justify-content-center">
+                                            <div class="mx-3 d-flex align-items-center mb-2">
+                                                <div style="width:16px; height:16px; background-color:#0d6efd; border-radius:50%; margin-right:5px;"></div>
+                                                <span>Query Site</span>
+                                            </div>
+                                            <div class="mx-3 d-flex align-items-center mb-2">
+                                                <div style="width:16px; height:16px; background-color:#4CAF50; border-radius:50%; margin-right:5px;"></div>
+                                                <span>High Similarity (RMSD &lt; 3.0 Å)</span>
+                                            </div>
+                                            <div class="mx-3 d-flex align-items-center mb-2">
+                                                <div style="width:16px; height:16px; background-color:#FF9800; border-radius:50%; margin-right:5px;"></div>
+                                                <span>Medium Similarity (RMSD 3.0-6.0 Å)</span>
+                                            </div>
+                                            <div class="mx-3 d-flex align-items-center mb-2">
+                                                <div style="width:16px; height:16px; background-color:#F44336; border-radius:50%; margin-right:5px;"></div>
+                                                <span>Low Similarity (RMSD &gt; 6.0 Å)</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-info">No structural matches available to display in network.</div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Motif Comparison Tab -->
+                    <div class="tab-pane fade" id="struct-motif" role="tabpanel" aria-labelledby="struct-motif-tab">
+                        {% if motif_html %}
+                            {{ motif_html|safe }}
+                        {% else %}
+                            <div class="alert alert-info">No motif comparison data available.</div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Residue Conservation Tab -->
+                    <div class="tab-pane fade" id="struct-conservation" role="tabpanel" aria-labelledby="struct-conservation-tab">
+                        {% if distribution_data %}
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>Consensus Motif</h6>
+                                    <div class="alert alert-info">
+                                        <code class="motif-sequence">{{ distribution_data.consensus }}</code>
+                                    </div>
+                                    <p class="small text-muted">Based on {{ distribution_data.motif_count }} structurally similar sites</p>
+                                    
+                                    {% if distribution_data.conserved %}
+                                    <h6 class="mt-3">Conserved Positions</h6>
+                                    <ul class="list-group">
+                                        {% for pos in distribution_data.conserved %}
+                                        <li class="list-group-item">
+                                            Position {{ pos.position }}: {{ pos.amino_acid }} ({{ pos.frequency|round }}% conserved)
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <h6>Residue Type Distribution</h6>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th>Position</th>
+                                                    <th>Polar</th>
+                                                    <th>Non-polar</th>
+                                                    <th>Acidic</th>
+                                                    <th>Basic</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for counts in distribution_data.group_counts %}
+                                                <tr>
+                                                    <td>{{ distribution_data.positions[loop.index0] }}</td>
+                                                    <td>{{ counts.polar }}</td>
+                                                    <td>{{ counts.nonpolar }}</td>
+                                                    <td>{{ counts.acidic }}</td>
+                                                    <td>{{ counts.basic }}</td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-info">No residue conservation analysis data available.</div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Terminus Enrichment Tab -->
+                    <div class="tab-pane fade" id="struct-enrichment" role="tabpanel" aria-labelledby="struct-enrichment-tab">
+                        {% if structural_matches and structural_matches|length > 0 %}
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="card mb-3">
+                                        <div class="card-header">N-terminal Region (-5 to -1)</div>
+                                        <div class="card-body">
+                                            <h6>Amino Acid Group Enrichment</h6>
+                                            <div id="n-terminus-chart" style="height: 250px;"></div>
+                                            <ul class="list-unstyled mt-3">
+                                                <li>
+                                                    <div class="d-flex align-items-center mb-1">
+                                                        <div style="width:12px; height:12px; background-color:#bbdefb; border-radius:50%; margin-right:5px;"></div>
+                                                        <span>Polar (S, T, Y, C, N, Q)</span>
+                                                    </div>
+                                                </li>
+                                                <li>
+                                                    <div class="d-flex align-items-center mb-1">
+                                                        <div style="width:12px; height:12px; background-color:#ffecb3; border-radius:50%; margin-right:5px;"></div>
+                                                        <span>Non-polar (A, V, I, L, M, F, W, P, G)</span>
+                                                    </div>
+                                                </li>
+                                                <li>
+                                                    <div class="d-flex align-items-center mb-1">
+                                                        <div style="width:12px; height:12px; background-color:#ffcdd2; border-radius:50%; margin-right:5px;"></div>
+                                                        <span>Acidic (D, E)</span>
+                                                    </div>
+                                                </li>
+                                                <li>
+                                                    <div class="d-flex align-items-center mb-1">
+                                                        <div style="width:12px; height:12px; background-color:#c8e6c9; border-radius:50%; margin-right:5px;"></div>
+                                                        <span>Basic (K, R, H)</span>
+                                                    </div>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <div class="card mb-3">
+                                        <div class="card-header">C-terminal Region (+1 to +5)</div>
+                                        <div class="card-body">
+                                            <h6>Amino Acid Group Enrichment</h6>
+                                            <div id="c-terminus-chart" style="height: 250px;"></div>
+                                            <p class="text-muted small mt-3">
+                                                Analysis shows enrichment of amino acid types compared to background frequency in the proteome. 
+                                                Bars above 1.0 indicate enrichment, below 1.0 indicate depletion.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Placeholder for terminus enrichment analysis script -->
+                            <script id="terminus-enrichment-data" type="application/json">
+                                {{ structural_matches|tojson|safe if structural_matches else '[]' }}
+                            </script>
+                        {% else %}
+                            <div class="alert alert-info">No data available for terminus enrichment analysis.</div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Match Table Tab -->
+                    <div class="tab-pane fade" id="struct-table" role="tabpanel" aria-labelledby="struct-table-tab">
+                        {% if structural_matches and structural_matches|length > 0 %}
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Target Site</th>
+                                            <th>UniProt ID</th>
+                                            <th>RMSD (Å)</th>
+                                            <th>pLDDT</th>
+                                            <th>Motif (if available)</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for match in structural_matches %}
+                                        <tr class="match-row" data-rmsd="{{ match.rmsd }}">
+                                            <td>{{ match.target_site }}</td>
+                                            <td>
+                                                <a href="https://www.uniprot.org/uniprotkb/{{ match.target_uniprot }}" target="_blank">
+                                                    {{ match.target_uniprot }}
+                                                </a>
+                                            </td>
+                                            <td>{{ match.rmsd|round(2) }}</td>
+                                            <td>{{ match.plddt if match.plddt else 'N/A' }}</td>
+                                            <td>
+                                                {% if match.motif %}
+                                                <code class="small motif-sequence">{{ match.motif }}</code>
+                                                {% else %}
+                                                <span class="text-muted">Not available</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <a href="/site/{{ match.target_uniprot }}/{{ match.target_site }}" class="btn btn-sm btn-outline-primary">
+                                                    View Site
+                                                </a>
+                                                <button class="btn btn-sm btn-outline-secondary highlight-node" data-node="{{ match.target_uniprot }}_{{ match.target_site }}">
+                                                    Highlight
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-info">No structural matches available.</div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Kinase Prediction Tab Content -->
+                    <div class="tab-pane fade" id="struct-kinase" role="tabpanel" aria-labelledby="struct-kinase-tab">
+                        {% if structure_kinase_data and structure_kinase_data.top_kinases %}
+                            <!-- Known Kinase Alert (if available) -->
+                            {% if structure_kinase_data.known_kinase and structure_kinase_data.known_kinase.has_known_kinase %}
+                                <div class="alert alert-success mb-4">
+                                    <i class="bi bi-check-circle-fill me-2"></i>
+                                    <strong>Known Kinase:</strong> This site is known to be phosphorylated by 
+                                    <span class="badge bg-primary">{{ structure_kinase_data.known_kinase.kinase }}</span>
+                                    according to PhosphositePlus database.
+                                </div>
+                            {% endif %}
+
+                            <div class="row mb-4">
+                                <!-- Top Kinases Bar Chart -->
+                                <div class="col-lg-8">
+                                    <div class="card h-100">
+                                        <div class="card-header">
+                                            <h6 class="mb-0">Top Predicted Kinases (Structure-Based)</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div style="height: 300px;">
+                                                <canvas id="struct-kinase-chart"></canvas>
+                                            </div>
+                                            <p class="text-muted small mt-3">
+                                                Structure-based kinase predictions are calculated by comparing the 3D structure
+                                                of this phosphosite to known kinase-substrate structures. Higher scores indicate
+                                                stronger confidence in the prediction.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Kinase Family Distribution -->
+                                <div class="col-lg-4">
+                                    <div class="card h-100">
+                                        <div class="card-header">
+                                            <h6 class="mb-0">Kinase Family Distribution</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div style="height: 300px;">
+                                                <canvas id="struct-kinase-family-chart"></canvas>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 
+                            <div class="card mb-4">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Kinase Recognition Motifs</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p class="mb-3">
+                                        Each kinase recognizes specific amino acid patterns (motifs) around the phosphorylation site.
+                                        Below are the consensus motifs for the top predicted kinases:
+                                    </p>
+                                    <div id="struct-motif-analysis">
+                                    </div>
+                                </div>
+                            </div>
+                            -->
+
+                            <!-- 
+                            {% if structure_kinase_data.heatmap and structure_kinase_data.heatmap.sites %}
+                                <div class="card mb-4">
+                                    <div class="card-header">
+                                        <h6 class="mb-0">Kinase Prediction Heatmap</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <p>
+                                            This heatmap shows kinase prediction scores across structurally similar sites.
+                                            Common patterns may indicate conserved kinase recognition.
+                                        </p>
+                                        <div id="struct-kinase-heatmap" style="height: 400px;"></div>
+                                    </div>
+                                </div>
+                            {% endif %}
+                            -->
+
+                            <!-- Hidden kinase data for JavaScript to use -->
+                            <script id="struct-kinase-data" type="application/json">
+                                {{ structure_kinase_data|tojson|safe }}
+                            </script>
+                        {% else %}
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle-fill me-2"></i>
+                                No structural kinase prediction data available for this site.
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Network Kinase Prediction Tab Content -->
+                    <div class="tab-pane fade" id="struct-network-kinase" role="tabpanel" aria-labelledby="struct-network-kinase-tab">
+                        {% if structure_network_kinase_data and structure_network_kinase_data.top_kinases %}
+                            <div class="alert alert-info mb-3">
+                                <i class="bi bi-info-circle-fill me-2"></i>
+                                Analysis based on <strong>{{ structure_network_kinase_data.site_count }}</strong> structurally similar sites 
+                                (RMSD < {{ structure_network_kinase_data.rmsd_threshold }} Å).
+                            </div>
+                            
+                            <!-- RMSD Threshold Controls -->
+                            <div class="card mb-3">
+                                <div class="card-header bg-light">
+                                    <h6 class="mb-0">RMSD Threshold (Å)</h6>
+                                </div>
+                                <div class="card-body">
+                                    <input type="range" class="form-range" id="rmsd-threshold" min="1.0" max="6.0" step="0.1" value="{{ structure_network_kinase_data.rmsd_threshold }}">
+                                    <div class="d-flex justify-content-between">
+                                        <small>1.0</small>
+                                        <small>Threshold: <span id="rmsd-threshold-value">{{ structure_network_kinase_data.rmsd_threshold }} Å</span></small>
+                                        <small>6.0</small>
+                                    </div>
+                                    <button id="update-rmsd-threshold" class="btn btn-sm btn-primary mt-2">Update Analysis</button>
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-4">
+                                <!-- Top Kinases Bar Chart -->
+                                <div class="col-lg-8">
+                                    <div class="card h-100">
+                                        <div class="card-header">
+                                            <h6 class="mb-0">Top Predicted Kinases (Structure Network)</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div style="height: 300px;">
+                                                <canvas id="struct-network-kinase-chart"></canvas>
+                                            </div>
+                                            <p class="small text-muted mt-3">
+                                                <strong>Error bars</strong> show the range of scores across similar sites.
+                                                <strong>Diamonds</strong> show median scores.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Kinase Family Distribution -->
+                                <div class="col-lg-4">
+                                    <div class="card h-100">
+                                        <div class="card-header">
+                                            <h6 class="mb-0">Kinase Family Distribution</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div style="height: 300px;">
+                                                <canvas id="struct-network-kinase-family-chart"></canvas>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Heatmap Visualization -->
+                            <div class="card mb-4">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Network Kinase Prediction Heatmap</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p>
+                                        This heatmap shows kinase prediction scores across structurally similar sites.
+                                        Common patterns may indicate conserved kinase recognition.
+                                    </p>
+                                    <div id="struct-network-kinase-heatmap" style="height: 400px;"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- Statistics Table -->
+                            <div class="card mb-4">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Network Prediction Statistics</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-striped table-hover">
+                                            <thead>
+                                                <tr>
+                                                    <th>Kinase</th>
+                                                    <th>Mean Score</th>
+                                                    <th>Median Score</th>
+                                                    <th>Min Score</th>
+                                                    <th>Max Score</th>
+                                                    <th>Sample Size</th>
+                                                    <th>Variability</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for kinase in structure_network_kinase_data.top_kinases %}
+                                                <tr>
+                                                    <td>{{ kinase.kinase }}</td>
+                                                    <td>{{ kinase.mean_score|round(3) }}</td>
+                                                    <td>{{ kinase.median_score|round(3) }}</td>
+                                                    <td>{{ kinase.min_score|round(3) }}</td>
+                                                    <td>{{ kinase.max_score|round(3) }}</td>
+                                                    <td>{{ kinase.sample_size }}</td>
+                                                    <td>{{ kinase.variability|round(3) }}</td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Hidden network kinase data for JavaScript -->
+                            <script id="struct-network-kinase-data" type="application/json">
+                                {{ structure_network_kinase_data|tojson|safe }}
+                            </script>
+                        {% else %}
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle-fill me-2"></i>
+                                No structure network-based kinase prediction data available for this site.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

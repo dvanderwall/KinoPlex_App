@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ site }} in {{ protein.get('gene_symbol', protein.get('uniprot_id')) }} - Protein Explorer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Add D3.js and NGL libraries -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/arose/ngl@v2.0.0-dev.37/dist/ngl.js"></script>
+    <!-- Add Bootstrap icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    
+    <!-- Add Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    
+    <!-- Add kinase prediction JS -->
+    <script src="{{ url_for('static', filename='js/kinase_prediction.js') }}"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    
+    <style>
+        /* Styling for the site page */
+        .metadata-card {
+            margin-bottom: 1.5rem;
+        }
+        .structure-viewer {
+            min-height: 500px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .site-viewer {
+            min-height: 400px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .motif-box {
+            display: flex;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            font-family: monospace;
+            font-size: 1.2rem;
+            margin: 1rem 0;
+            padding: 0.5rem;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .motif-box .aa {
+            flex: 0 0 auto;
+            width: 2rem;
+            height: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 1px;
+            border-radius: 3px;
+        }
+        .motif-box .aa.highlighted {
+            background-color: #ff5722;
+            color: white;
+            font-weight: bold;
+        }
+        .motif-box .aa.polar {
+            background-color: #bbdefb;
+        }
+        .motif-box .aa.non-polar {
+            background-color: #ffecb3;
+        }
+        .motif-box .aa.acidic {
+            background-color: #ffcdd2;
+        }
+        .motif-box .aa.basic {
+            background-color: #c8e6c9;
+        }
+        .motif-box .aa.special {
+            background-color: #e1bee7;
+        }
+        .motif-position {
+            font-size: 0.7rem;
+            text-align: center;
+            color: #666;
+        }
+        .match-table {
+            font-size: 0.9rem;
+        }
+        .low-rmsd {
+            background-color: #d4edda;
+        }
+        .medium-rmsd {
+            background-color: #fff3cd;
+        }
+        .high-rmsd {
+            background-color: #f8d7da;
+        }
+        
+        /* Network visualization styles */
+        #network-container {
+            width: 100%;
+            height: 500px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .network-node {
+            stroke: #fff;
+            stroke-width: 1.5px;
+        }
+        .network-link {
+            stroke-opacity: 0.6;
+        }
+        .network-node-label {
+            font-size: 10px;
+            font-family: sans-serif;
+            pointer-events: none;
+        }
+        
+        /* Styles for sequence similarity visualization */
+        .motif-comparison {
+            font-family: monospace;
+            margin-bottom: 20px;
+        }
+        .motif-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .motif-label {
+            width: 130px;
+            font-weight: bold;
+            text-align: right;
+            padding-right: 10px;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .motif-sequence {
+            display: flex;
+        }
+        .motif-aa {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 1px;
+            border-radius: 3px;
+        }
+        .motif-aa.highlighted {
+            background-color: #ff5722;
+            color: white;
+            font-weight: bold;
+        }
+        .motif-aa.sty {
+            background-color: #bbdefb;
+        }
+        .motif-aa.nq {
+            background-color: #b39ddb;
+        }
+        .motif-aa.cys {
+            background-color: #ffcc80;
+        }
+        .motif-aa.proline {
+            background-color: #81c784;
+        }
+        .motif-aa.nonpolar {
+            background-color: #ffecb3;
+        }
+        .motif-aa.acidic {
+            background-color: #ffcdd2;
+        }
+        .motif-aa.basic {
+            background-color: #c8e6c9;
+        }
+        .motif-aa.special {
+            background-color: #e1bee7;
+        }
+        .motif-aa.aa-x {
+            background-color: #e0e0e0;
+            color: #9e9e9e;
+        }
+        .node-info-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 250px;
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            z-index: 100;
+            font-size: 0.9rem;
+            max-height: 380px;
+            overflow-y: auto;
+        }
+        #sequence-network-container {
+            height: 500px;
+            width: 100%;
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">Protein Explorer</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/search">Search</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/analyze">Analyze</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/phosphosite">Phosphosite Analysis</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/site-search">Site Search</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/faq">FAQ</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container my-5">
+        <!-- Top section with side-by-side panels -->
+        <div class="row mb-4">
+            <!-- Protein Header Section -->
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header bg-primary text-white">
+                        <h4 class="mb-0">{{ site }} in {{ protein.get('gene_symbol', protein.get('uniprot_id')) }}</h4>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>UniProt ID:</strong> {{ protein.get('uniprot_id') }}</p>
+                        <p><strong>Gene Symbol:</strong> {{ protein.get('gene_symbol', 'N/A') }}</p>
+                        <p><strong>Protein Name:</strong> {{ protein.get('name', 'N/A') }}</p>
+                        <p><strong>Phosphosite:</strong> {{ site }}</p>
+                        {% if site_data.get('mean_plddt') %}
+                        <p><strong>Mean pLDDT:</strong> {{ site_data.get('mean_plddt') }}</p>
+                        {% endif %}
+                        {% if site_data.get('motif') %}
+                        <p><strong>Motif:</strong> <code>{{ site_data.get('motif') }}</code></p>
+                        {% endif %}
+                        
+                        <div class="d-flex justify-content-center mt-3">
+                            <a href="https://www.uniprot.org/uniprotkb/{{ protein.get('uniprot_id') }}" class="btn btn-outline-primary mx-2" target="_blank">View on UniProt</a>
+                            <a href="https://alphafold.ebi.ac.uk/entry/{{ protein.get('uniprot_id') }}" class="btn btn-outline-secondary mx-2" target="_blank">View on AlphaFold</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <input type="hidden" id="site-id" value="{{ site_id }}">
+            
+            <!-- Structural Context Section -->
+            <div class="col-lg-6">
+                {% if context_data %}
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0">Structural Context</h5>
+                    </div>
+                    <div class="card-body">
+                        <h6>Environment (8Å)</h6>
+                        <table class="table table-sm">
+                            <tbody>
+                                <tr>
+                                    <th>Secondary Structure</th>
+                                    <td>{{ context_data.secondary_structure }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Surface Accessibility</th>
+                                    <td>{{ context_data.solvent_accessibility }}%</td>
+                                </tr>
+                                <tr>
+                                    <th>pLDDT Score</th>
+                                    <td>{{ context_data.plddt }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Nearby Residues</th>
+                                    <td>{{ context_data.nearby_count }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        
+                        {% if context_data.nearby_residues %}
+                        <h6 class="mt-3">Closest Residues</h6>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Residue</th>
+                                    <th>Distance (Å)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for res in context_data.nearby_residues[:5] %}
+                                <tr>
+                                    <td>{{ res.resname }}{{ res.resno }}</td>
+                                    <td>{{ res.min_distance }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        {% endif %}
+                    </div>
+                </div>
+                {% else %}
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0">Structural Context</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info">No structural context data available.</div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Full Protein Structure Visualization -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Protein Structure</h5>
+                    </div>
+                    <div class="card-body p-0 structure-viewer">
+                        {% if structure_html %}
+                            {{ structure_html|safe }}
+                        {% else %}
+                            <div class="alert alert-warning">Structure visualization not available.</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Include Structural and Sequence sections through templates -->
+        {% include 'site_structural_section.html' %}
+        
+        <!--
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Enhanced Structural View</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        {{ enhanced_3d_html|safe }}
+                    </div>
+                    <div class="card-footer text-muted small">
+                        Interactive view with amino acid type coloring and site environment focus.
+                    </div>
+                </div>
+            </div>
+        </div>
+        -->
+        {% include 'site_sequence_section.html' %}
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-light py-4 mt-5">
+        <div class="container">
+            <p class="text-center mb-0">&copy; 2025 Protein Explorer</p>
+        </div>
+    </footer>
+
+    <!-- Required JavaScript Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Include the scripts for structural section -->
+    {% include 'structural_network_script.html' %}
+    
+    <!-- Include the scripts for sequence section -->
+    {% include 'sequence_network_script.html' %}
+
+    {% include 'combined_kinase_tab.html' %}
+    
+    <script src="{{ url_for('static', filename='js/network-kinase-visualization.js') }}"></script>
+    {% include 'network_kinase_tab.html' %}
+
+    <!-- Additional script to ensure motifs are properly formatted -->
+    <script>
+        // Ensure motifs are formatted on page load with a delay to ensure DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                // If any formatting functions exist, run them
+                if (typeof formatMotifBlocks === 'function') {
+                    formatMotifBlocks();
+                }
+            }, 300);
+        });
+    </script>
+
+    <script>
+        // Initialize all tabs when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Log what we find for debugging
+            console.log("Initializing tabs");
+            console.log("Structural tab buttons found:", document.querySelectorAll('#structuralTab button').length);
+            
+            // Try using Bootstrap's native API
+            const structuralTabEl = document.querySelector('#structuralTab button[data-bs-target="#struct-network"]');
+            if (structuralTabEl) {
+                console.log("Found first structural tab, initializing");
+                const structuralTab = new bootstrap.Tab(structuralTabEl);
+                structuralTab.show(); // Explicitly show the first tab
+            } else {
+                console.error("Could not find first structural tab");
+            }
+            
+            // Add direct event listeners for click
+            document.querySelectorAll('#structuralTab button').forEach(function(button) {
+                button.addEventListener('click', function(e) {
+                    console.log("Structural tab clicked:", this.getAttribute('data-bs-target'));
+                    e.preventDefault();
+                    const target = document.querySelector(this.getAttribute('data-bs-target'));
+                    if (target) {
+                        // Hide all structural tab panes
+                        document.querySelectorAll('#structuralTabContent .tab-pane').forEach(function(pane) {
+                            pane.classList.remove('active', 'show');
+                        });
+                        // Show this one
+                        target.classList.add('active', 'show');
+                        
+                        // Update active state on tabs
+                        document.querySelectorAll('#structuralTab button').forEach(function(btn) {
+                            btn.classList.remove('active');
+                            btn.setAttribute('aria-selected', 'false');
+                        });
+                        this.classList.add('active');
+                        this.setAttribute('aria-selected', 'true');
+                        
+                        // Trigger resize for visualizations
+                        window.dispatchEvent(new Event('resize'));
+                    } else {
+                        console.error("Target not found:", this.getAttribute('data-bs-target'));
+                    }
+                });
+            });
+        });
+    </script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("DOM loaded");
+            
+            // Check tab elements
+            console.log("Structural tabs:", 
+                        document.querySelectorAll('#structuralTab button').length);
+            console.log("Sequence tabs:", 
+                        document.querySelectorAll('#sequenceTab button').length);
+            
+            // Check content panes
+            console.log("Structural tab panes:", 
+                        document.querySelectorAll('#structuralTabContent .tab-pane').length);
+            console.log("Sequence tab panes:", 
+                        document.querySelectorAll('#sequenceTabContent .tab-pane').length);
+            
+            // Check if specific tab elements exist
+            console.log("Network container exists:", 
+                        !!document.getElementById('network-container'));
+            console.log("Sequence network container exists:", 
+                        !!document.getElementById('sequence-network-container'));
+            
+            // Check data availability
+            console.log("Network data script exists:", 
+                        !!document.getElementById('network-data'));
+            console.log("Sequence network data script exists:", 
+                        !!document.getElementById('sequence-network-data'));
+        });
+    </script>
+</body>
+</html>

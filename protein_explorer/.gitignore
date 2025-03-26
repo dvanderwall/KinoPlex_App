@@ -1,0 +1,7 @@
+echo "*.log" > .gitignore
+echo ".Rhistory" >> .gitignore
+echo ".RData" >> .gitignore
+echo ".Rproj.user/" >> .gitignore
+echo "*.parquet" >> .gitignore
+echo "*.feather" >> .gitignore
+echo "*.xlsx" >> .gitignore
