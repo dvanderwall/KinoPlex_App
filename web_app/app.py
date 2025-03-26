@@ -67,6 +67,55 @@ from protein_explorer.analysis.network_kinase_predictor import (
     get_kinase_family_distribution_network
 )
 
+
+from protein_explorer.db_integration import (
+    find_structural_matches,
+    get_phosphosite_data,
+    enhance_phosphosite,
+    enhance_structural_matches,
+    find_sequence_matches,
+    get_site_kinase_scores,
+    predict_kinases,
+    get_similar_sites,
+    get_network_kinase_scores,
+    get_heatmap_data,
+    get_all_phosphosites,
+    get_kinase_comparison_data,
+    get_network_kinase_comparison,
+    get_known_kinase_info,
+    categorize_kinases_by_family,
+    analyze_motif_conservation,
+    use_database,
+    check_database_health
+)
+
+# Database configuration - add after existing import statements
+import os
+USE_DATABASE = os.environ.get('USE_DATABASE', 'True').lower() in ('true', '1', 't', 'yes')
+if USE_DATABASE:
+    use_database(True)
+    logger.info("Database mode enabled")
+else:
+    logger.info("File-based mode enabled")
+
+# Add a database health check on startup
+try:
+    if USE_DATABASE:
+        health_status = check_database_health()
+        if health_status['status'] == 'healthy':
+            logger.info(f"Database connection healthy: {health_status['latency_ms']}ms latency")
+        else:
+            logger.warning(f"Database health check failed: {health_status.get('error', 'Unknown error')}")
+            logger.warning("Falling back to file-based mode")
+            use_database(False)
+except Exception as e:
+    logger.warning(f"Error checking database health: {e}")
+    logger.warning("Falling back to file-based mode")
+    use_database(False)
+
+
+
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -243,7 +292,7 @@ def protein(identifier):
                         try:
                             # Use enhanced function that includes supplementary data
                             from protein_explorer.analysis.phospho_analyzer import get_phosphosites, get_phosphosite_data
-                            phosphosites = get_phosphosites(protein_data['uniprot_id'])
+                            phosphosites = get_all_phosphosites(protein_data['uniprot_id'])
                             print(f"DEBUG: Found {len(phosphosites)} potential phosphorylation sites")
                             
                             # Enhance phosphosites with additional metrics for visualization
@@ -769,7 +818,7 @@ def site_detail(uniprot_id, site):
         
         # Get supplementary data for this site
         from protein_explorer.analysis.phospho_analyzer import get_phosphosite_data, enhance_phosphosite
-        site_data = get_phosphosite_data(site_id)
+        site_data = pe.db.db_integration.get_phosphosite_data(site_id)
         
         # If site_data is None, create a minimal site data dictionary
         if not site_data:
@@ -797,7 +846,7 @@ def site_detail(uniprot_id, site):
         structural_matches = []
         try:
             # Get raw matches
-            all_matches = find_structural_matches(uniprot_id, [site_data], top_n=None)
+            all_matches =  pe.db.db_integration.find_structural_matches(uniprot_id, [site_data], top_n=None)
             raw_matches = all_matches.get(site, [])
             
             # Filter out self-matches
