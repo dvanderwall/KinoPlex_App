@@ -313,7 +313,6 @@ def protein(identifier):
                             print(f"DEBUG: Retrieved {len(known_phosphosites)} known phosphosites from database")
                             
                             # Create a lookup dictionary for known sites
-                            # Create a lookup dictionary for known sites
                             known_site_lookup = {}
                             for site in known_phosphosites:
                                 if 'site' in site:
@@ -338,19 +337,41 @@ def protein(identifier):
                                     for field in ['motif', 'mean_plddt', 'site_plddt', 'nearby_count', 
                                                 'surface_accessibility']:
                                         if field in known_site and known_site[field] is not None:
-                                            site[field] = known_site[field]
+                                            # Round numeric values if needed
+                                            if field in ['mean_plddt', 'site_plddt', 'surface_accessibility']:
+                                                try:
+                                                    site[field] = round(float(known_site[field]), 2)
+                                                except (ValueError, TypeError):
+                                                    site[field] = known_site[field]
+                                            else:
+                                                site[field] = known_site[field]
                                     
                                     # Explicitly set is_known based on is_known_phosphosite field
+                                    # First, try is_known_phosphosite
                                     if 'is_known_phosphosite' in known_site:
-                                        # Convert to integer and then to boolean (0 becomes False, any other number becomes True)
                                         try:
-                                            is_known_val = int(known_site['is_known_phosphosite'])
+                                            # First try to convert to int and then to boolean
+                                            is_known_val = int(float(known_site['is_known_phosphosite']))
                                             site['is_known'] = bool(is_known_val)
                                             print(f"DEBUG: Setting is_known={site['is_known']} for {site_key}, raw value was {known_site['is_known_phosphosite']}")
                                         except (ValueError, TypeError):
-                                            # If it can't be converted to int, use the bool() conversion
-                                            site['is_known'] = bool(known_site['is_known_phosphosite'])
-                                            print(f"DEBUG: Setting is_known={site['is_known']} for {site_key}, using bool conversion on {known_site['is_known_phosphosite']}")
+                                            # If that fails, try direct boolean conversion
+                                            try:
+                                                site['is_known'] = bool(known_site['is_known_phosphosite'])
+                                                print(f"DEBUG: Setting is_known={site['is_known']} for {site_key}, using bool conversion on {known_site['is_known_phosphosite']}")
+                                            except (ValueError, TypeError):
+                                                # If even that fails, fallback to True because it's in the database
+                                                site['is_known'] = True
+                                                print(f"DEBUG: Setting is_known=True for {site_key}, fallback because the site is in the database")
+                                    elif 'is_known' in known_site:
+                                        # Try the is_known field next
+                                        try:
+                                            site['is_known'] = bool(int(known_site['is_known']))
+                                        except (ValueError, TypeError):
+                                            try:
+                                                site['is_known'] = bool(known_site['is_known'])
+                                            except (ValueError, TypeError):
+                                                site['is_known'] = True
                                     else:
                                         # If site is in known_site_lookup but no is_known_phosphosite field,
                                         # we'll assume it's known (since it's in the phosphosite table)
@@ -361,13 +382,18 @@ def protein(identifier):
                                     if 'StructuralSimAvailable' in known_site:
                                         # Convert to integer and then to boolean
                                         try:
-                                            struct_sim_val = int(known_site['StructuralSimAvailable'])
+                                            struct_sim_val = int(float(known_site['StructuralSimAvailable']))
                                             site['StructuralSimAvailable'] = bool(struct_sim_val)
                                             print(f"DEBUG: Setting StructuralSimAvailable={site['StructuralSimAvailable']} for {site_key}, raw value was {known_site['StructuralSimAvailable']}")
                                         except (ValueError, TypeError):
-                                            # If it can't be converted to int, use the bool() conversion
-                                            site['StructuralSimAvailable'] = bool(known_site['StructuralSimAvailable'])
-                                            print(f"DEBUG: Setting StructuralSimAvailable={site['StructuralSimAvailable']} for {site_key}, using bool conversion on {known_site['StructuralSimAvailable']}")
+                                            # If it can't be converted to int, try direct boolean conversion
+                                            try:
+                                                site['StructuralSimAvailable'] = bool(known_site['StructuralSimAvailable'])
+                                                print(f"DEBUG: Setting StructuralSimAvailable={site['StructuralSimAvailable']} for {site_key}, using bool conversion on {known_site['StructuralSimAvailable']}")
+                                            except (ValueError, TypeError):
+                                                # If even that fails, default to False
+                                                site['StructuralSimAvailable'] = False
+                                                print(f"DEBUG: Setting StructuralSimAvailable=False for {site_key}, conversion failed")
                                     else:
                                         # Default to False if field is missing
                                         site['StructuralSimAvailable'] = False
@@ -398,9 +424,31 @@ def protein(identifier):
                                         # Copy relevant fields
                                         for field in ['mean_plddt', 'nearby_count', 'motif', 'is_known']:
                                             if field in analyzed_site and analyzed_site[field] is not None:
-                                                site[field] = analyzed_site[field]
+                                                # Round numeric values if needed
+                                                if field in ['mean_plddt', 'site_plddt', 'surface_accessibility']:
+                                                    try:
+                                                        site[field] = round(float(analyzed_site[field]), 2)
+                                                    except (ValueError, TypeError):
+                                                        site[field] = analyzed_site[field]
+                                                else:
+                                                    site[field] = analyzed_site[field]
                             except Exception as fallback_e:
                                 print(f"DEBUG: Error in fallback analysis: {fallback_e}")
+                                
+                        # Process sites without structural data on-the-fly
+                        try:
+                            # Import the on-the-fly analyzer
+                            from protein_explorer.analysis.OnTheFly import process_phosphosites_OTF
+                            
+                            # Process sites with missing structural data
+                            all_phosphosites = process_phosphosites_OTF(structure, sequence, all_phosphosites)
+                            print(f"DEBUG: Processed phosphosites on-the-fly")
+                        except ImportError:
+                            print(f"DEBUG: OnTheFly module not found, skipping on-the-fly processing")
+                        except Exception as e:
+                            print(f"DEBUG: Error processing phosphosites on-the-fly: {e}")
+                            import traceback
+                            print(traceback.format_exc())
                         
                         # Create enhanced table visualization using the merged data
                         try:
@@ -424,31 +472,68 @@ def protein(identifier):
                                                     <th>Site</th>
                                                     <th>Motif (-7 to +7)</th>
                                                     <th>Mean pLDDT</th>
+                                                    <th>Site pLDDT</th>
                                                     <th>Nearby Residues (10Å)</th>
-                                                    <th>Known in PhosphositePlus</th>
+                                                    <th>Surface Access.</th>
+                                                    <th>Known</th>
+                                                    <th>Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody id="phosphosite-table">
                             """
                             
-                            for site in all_phosphosites:  # Use all_phosphosites to include all STY sites
+                            for site in all_phosphosites:
+                                # Determine row style based on structural data availability
+                                row_style = ""
+                                if site.get('StructuralSimAvailable', False):
+                                    row_style = 'style="background-color: #c8e6c9;"'  # Green
+                                else:
+                                    row_style = 'style="background-color: #ffcc80;"'  # Orange
+                                
+                                # Format numeric values for display
+                                try:
+                                    mean_plddt = float(site.get('mean_plddt', 0))
+                                    mean_plddt_text = f"{mean_plddt:.2f}" if mean_plddt > 0 else "N/A"
+                                except (ValueError, TypeError):
+                                    mean_plddt_text = site.get('mean_plddt', 'N/A')
+                                
+                                try:
+                                    site_plddt = float(site.get('site_plddt', 0))
+                                    site_plddt_text = f"{site_plddt:.2f}" if site_plddt > 0 else "N/A"
+                                except (ValueError, TypeError):
+                                    site_plddt_text = site.get('site_plddt', 'N/A')
+                                
+                                try:
+                                    surface_access = float(site.get('surface_accessibility', 0))
+                                    surface_access_text = f"{surface_access:.2f}%" if surface_access > 0 else "N/A"
+                                except (ValueError, TypeError):
+                                    surface_access_text = site.get('surface_accessibility', 'N/A')
+                                
                                 # Add data attributes to the row for better visualization
-                                data_attrs = f'''
+                                data_attrs = f"""
                                     data-site="{site['site']}" 
                                     data-resno="{site['resno']}" 
-                                    data-type="{site['site'][0] if 'site' in site else ''}"
+                                    data-type="{site['siteType']}"
                                     data-plddt="{site.get('mean_plddt', 0)}" 
                                     data-nearby="{site.get('nearby_count', 0)}"
+                                    data-surface="{site.get('surface_accessibility', 0)}"
                                     data-known="{str(site.get('is_known', False)).lower()}"
-                                '''
+                                """
                                 
                                 phosphosite_html += f"""
-                                <tr {data_attrs}>
+                                <tr {row_style} {data_attrs}>
                                     <td><a href="/site/{protein_data['uniprot_id']}/{site['site']}" class="site-link" data-resno="{site['resno']}">{site['site']}</a></td>
                                     <td><code class="motif-sequence">{site.get('motif', '')}</code></td>
-                                    <td>{site.get('mean_plddt', 'N/A')}</td>
+                                    <td>{mean_plddt_text}</td>
+                                    <td>{site_plddt_text}</td>
                                     <td>{site.get('nearby_count', 'N/A')}</td>
+                                    <td>{surface_access_text}</td>
                                     <td>{"Yes" if site.get('is_known', False) else "No"}</td>
+                                    <td>
+                                        <a href="/site/{protein_data['uniprot_id']}/{site['site']}" class="btn btn-sm btn-outline-primary">
+                                            Details
+                                        </a>
+                                    </td>
                                 </tr>
                                 """
                             
@@ -466,8 +551,11 @@ def protein(identifier):
                                         link.addEventListener('click', function(e) {
                                             e.preventDefault();
                                             const resno = this.getAttribute('data-resno');
+                                            
+                                            // Find the span in the sequence viewer
                                             const sequenceSpans = document.querySelectorAll('.sequence-viewer span');
                                             if (sequenceSpans.length > 0) {
+                                                // Find and click the span for this residue
                                                 const index = parseInt(resno) - 1;
                                                 if (index >= 0 && index < sequenceSpans.length) {
                                                     sequenceSpans[index].click();
@@ -719,6 +807,7 @@ def phosphosite_analysis():
         try:
             # Get protein data
             if id_type.lower() == 'uniprot':
+                print(f"DEBUG: Getting protein by UniProt ID: {identifier}")
                 protein_info = {"uniprot_id": identifier, "gene_symbol": "Unknown", "name": "Unknown Protein"}
                 try:
                     protein_data = get_protein_by_id(uniprot_id=identifier)
@@ -732,6 +821,7 @@ def phosphosite_analysis():
             else:
                 # Get UniProt ID from gene symbol
                 try:
+                    print(f"DEBUG: Getting protein by gene symbol: {identifier}")
                     pre_filt_id = get_uniprot_id_from_gene(identifier)
                     protein_data = get_protein_by_id(pre_filt_id)
                     protein_info = {
@@ -743,27 +833,158 @@ def phosphosite_analysis():
                     logger.error(f"Error getting protein from gene symbol: {e}")
                     return render_template('phosphosite.html', error=f"Could not find protein with gene symbol: {identifier}")
             
-            # Get phosphosites
-            phosphosites = get_all_phosphosites(protein_info["uniprot_id"])
+            # Get sequence data
+            sequence = None
+            try:
+                full_protein_data = get_protein_by_id(uniprot_id=protein_info["uniprot_id"])
+                sequence = full_protein_data.get('metadata', {}).get('sequence', {}).get('value')
+                print(f"DEBUG: Got protein sequence of length: {len(sequence) if sequence else 'None'}")
+            except Exception as e:
+                logger.warning(f"Error getting protein sequence: {e}")
             
-            if not phosphosites:
-                # Fall back to direct analysis if no sites found in database
-                sequence = None
-                structure = None
-                
-                try:
-                    # Get sequence and structure
-                    protein_data = get_protein_by_id(uniprot_id=protein_info["uniprot_id"])
-                    sequence = protein_data.get('metadata', {}).get('sequence', {}).get('value')
-                    structure = get_alphafold_structure(protein_info["uniprot_id"])
-                    
-                    if sequence and structure:
-                        phosphosites = analyze_phosphosites(sequence, structure, protein_info["uniprot_id"])
-                        logger.info(f"Analyzed {len(phosphosites)} phosphosites directly")
+            # Get structure for analysis if needed
+            structure = None
+            try:
+                # Special handling for TP53/P04637
+                if protein_info["uniprot_id"] in ['P04637', 'P53_HUMAN']:
+                    import requests
+                    url = f"https://alphafold.ebi.ac.uk/files/AF-{protein_info['uniprot_id']}-F1-model_v4.pdb"
+                    response = requests.get(url)
+                    if response.status_code == 200:
+                        structure = response.text
+                        print(f"DEBUG: Got structure directly, length: {len(structure)}")
                     else:
-                        logger.warning("Missing sequence or structure for direct analysis")
+                        # Fall back to normal method
+                        structure = get_alphafold_structure(protein_info["uniprot_id"])
+                else:
+                    structure = get_alphafold_structure(protein_info["uniprot_id"])
+                print(f"DEBUG: Got AlphaFold structure")
+            except Exception as e:
+                logger.warning(f"Error getting AlphaFold structure: {e}")
+            
+            # Get phosphosites from database
+            phosphosites = get_all_phosphosites(protein_info["uniprot_id"])
+            print(f"DEBUG: Got {len(phosphosites) if phosphosites else 0} phosphosites from database")
+            
+            # If we have sequence but no sites, or sites array is empty, analyze all STY sites
+            if sequence and (not phosphosites or len(phosphosites) == 0):
+                print(f"DEBUG: No phosphosites from database, analyzing all STY sites from sequence")
+                # Find all STY sites in the sequence
+                from protein_explorer.analysis.OnTheFly import find_all_sty_sites
+                phosphosites = find_all_sty_sites(sequence)
+                print(f"DEBUG: Found {len(phosphosites)} STY sites in sequence")
+                
+                # If we have structure, do full analysis
+                if structure:
+                    try:
+                        print(f"DEBUG: Analyzing phosphosites from structure")
+                        analyzed_sites = analyze_phosphosites(sequence, structure, protein_info["uniprot_id"])
+                        
+                        # Create lookup dictionaries
+                        analyzed_lookup = {site['site']: site for site in analyzed_sites if 'site' in site}
+                        
+                        # Update phosphosites with analysis results
+                        for site in phosphosites:
+                            site_key = site['site']
+                            if site_key in analyzed_lookup:
+                                analyzed_site = analyzed_lookup[site_key]
+                                for key, value in analyzed_site.items():
+                                    if value is not None and (key not in site or site[key] is None):
+                                        # Round numeric values if needed
+                                        if key in ['mean_plddt', 'site_plddt', 'surface_accessibility']:
+                                            try:
+                                                site[key] = round(float(value), 2)
+                                            except (ValueError, TypeError):
+                                                site[key] = value
+                                        else:
+                                            site[key] = value
+                    except Exception as e:
+                        logger.error(f"Error analyzing phosphosites from structure: {e}")
+            elif sequence and phosphosites:
+                # We have both sequence and sites from database
+                # Make sure we have all STY sites by merging database sites with sequence sites
+                from protein_explorer.analysis.OnTheFly import find_all_sty_sites
+                phosphosites = find_all_sty_sites(sequence, phosphosites)
+                print(f"DEBUG: After merging, have {len(phosphosites)} total STY sites")
+            
+            # Process phosphosites for correct boolean values
+            for site in phosphosites:
+                # Handle is_known properly
+                if 'is_known_phosphosite' in site:
+                    # Convert to integer and then to boolean (0 becomes False, any other number becomes True)
+                    try:
+                        # First try to convert to float, then int (handles strings like "1.0")
+                        is_known_val = int(float(site['is_known_phosphosite']))
+                        site['is_known'] = bool(is_known_val)
+                        print(f"DEBUG: Setting is_known={site['is_known']} for {site.get('site', 'unknown')}, raw value was {site['is_known_phosphosite']}")
+                    except (ValueError, TypeError):
+                        # If it can't be converted to int, try direct boolean conversion
+                        try:
+                            site['is_known'] = bool(site['is_known_phosphosite'])
+                            print(f"DEBUG: Setting is_known={site['is_known']} for {site.get('site', 'unknown')}, using bool conversion on {site['is_known_phosphosite']}")
+                        except (ValueError, TypeError):
+                            # Last resort, default to False
+                            site['is_known'] = False
+                elif 'is_known' not in site:
+                    # Default to False if field is missing
+                    site['is_known'] = False
+                
+                # Handle StructuralSimAvailable properly
+                if 'StructuralSimAvailable' in site:
+                    # Convert to integer and then to boolean
+                    try:
+                        # First try to convert to float, then int (handles strings like "1.0")
+                        struct_sim_val = int(float(site['StructuralSimAvailable']))
+                        site['StructuralSimAvailable'] = bool(struct_sim_val)
+                        print(f"DEBUG: Setting StructuralSimAvailable={site['StructuralSimAvailable']} for {site.get('site', 'unknown')}, raw value was {site['StructuralSimAvailable']}")
+                    except (ValueError, TypeError):
+                        # If it can't be converted to int, try direct boolean conversion
+                        try:
+                            site['StructuralSimAvailable'] = bool(site['StructuralSimAvailable'])
+                            print(f"DEBUG: Setting StructuralSimAvailable={site['StructuralSimAvailable']} for {site.get('site', 'unknown')}, using bool conversion on {site['StructuralSimAvailable']}")
+                        except (ValueError, TypeError):
+                            # Last resort, default to False
+                            site['StructuralSimAvailable'] = False
+                else:
+                    # Default to False if field is missing
+                    site['StructuralSimAvailable'] = False
+                    
+                # Round numeric fields to 2 decimal places
+                for field in ['mean_plddt', 'site_plddt', 'surface_accessibility']:
+                    if field in site and site[field] not in [None, 'N/A', '']:
+                        try:
+                            site[field] = round(float(site[field]), 2)
+                        except (ValueError, TypeError):
+                            # Skip if not convertible to float
+                            pass
+            
+            # Process sites without structural data on-the-fly
+            if structure and sequence:
+                try:
+                    # Import and use the on-the-fly processor
+                    from protein_explorer.analysis.OnTheFly import process_phosphosites_OTF
+                    phosphosites = process_phosphosites_OTF(structure, sequence, phosphosites)
+                    print(f"DEBUG: Processed phosphosites on-the-fly to fill in missing structural data")
+                    
+                    # Round all numeric values after on-the-fly processing
+                    for site in phosphosites:
+                        for field in ['mean_plddt', 'site_plddt', 'surface_accessibility']:
+                            if field in site and site[field] not in [None, 'N/A', '']:
+                                try:
+                                    site[field] = round(float(site[field]), 2)
+                                except (ValueError, TypeError):
+                                    # Skip if not convertible to float
+                                    pass
+                except ImportError:
+                    print(f"DEBUG: OnTheFly.process_phosphosites_OTF not found, skipping on-the-fly processing")
                 except Exception as e:
-                    logger.error(f"Error in direct phosphosite analysis: {e}")
+                    print(f"DEBUG: Error in on-the-fly processing: {e}")
+                    import traceback
+                    print(traceback.format_exc())
+            
+            # Debug the processed phosphosite data
+            from protein_explorer.utils.debug_helper import debug_phosphosite_data
+            debug_phosphosite_data(phosphosites)
             
             # Get structural matches for phosphosites
             structural_matches = {}
@@ -791,13 +1012,112 @@ def phosphosite_analysis():
                 )
             except Exception as e:
                 logger.error(f"Error creating enhanced table: {e}")
+                # Fallback to basic HTML table if enhanced table fails
+                phosphosites_html = create_fallback_table_html(phosphosites, protein_info["uniprot_id"])
                 
+            comparison_container_html = '''
+            <div id="phosphosite-comparison-container" class="comparison-container mb-4">
+                <!-- Phosphosite comparison visualizations will be loaded here -->
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading comparison visualizations...</p>
+                </div>
+            </div>
+            '''
+            
+            # Prepare data for comparison visualizations
+            known_unknown_stats = {
+                'known_count': sum(1 for site in phosphosites if site.get('is_known', False)),
+                'unknown_count': sum(1 for site in phosphosites if not site.get('is_known', False)),
+                'total_count': len(phosphosites)
+            }
+            # Log phosphosite stats for debugging
+            print(f"DEBUG: Phosphosite stats - Known: {known_unknown_stats['known_count']}, Unknown: {known_unknown_stats['unknown_count']}, Total: {known_unknown_stats['total_count']}")
+            
+            # Add data attributes to table rows for phosphosite-comparison.js script
+            # This is handled by the enhance_phosphosite_table function or fallback_table_html function
+            
+            # Additional scripts to load comparison script and initialize
+            additional_scripts = '''
+            <!-- Ensure Chart.js is loaded before initializing comparison visualization -->
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    // Log the loading status of scripts
+                    console.log('DOM loaded, initializing phosphosite comparison...');
+                    console.log('Chart.js loaded:', typeof Chart !== 'undefined');
+                    console.log('initPhosphositeComparison function exists:', typeof window.initPhosphositeComparison !== 'undefined');
+                    
+                    // If Chart.js is not loaded, we need to make sure it loads before our scripts
+                    if (typeof Chart === 'undefined') {
+                        console.warn('Chart.js not loaded yet, will try to load it again');
+                        const script = document.createElement('script');
+                        script.src = 'https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js';
+                        script.onload = function() {
+                            console.log('Chart.js loaded successfully on retry');
+                            
+                            // Load the annotation plugin
+                            const annotationPlugin = document.createElement('script');
+                            annotationPlugin.src = 'https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.0.1/dist/chartjs-plugin-annotation.min.js';
+                            annotationPlugin.onload = function() {
+                                // Once Chart.js and plugins are loaded, load visualization scripts
+                                loadVisualizationScripts();
+                            };
+                            document.head.appendChild(annotationPlugin);
+                        };
+                        document.head.appendChild(script);
+                    } else {
+                        // Chart.js is already loaded, just check for our scripts
+                        if (typeof window.initPhosphositeComparison !== 'function') {
+                            console.warn('initPhosphositeComparison function not found, loading script again');
+                            loadVisualizationScripts();
+                        } else {
+                            // Everything is loaded, initialize the comparison view
+                            setTimeout(function() {
+                                console.log('Initializing phosphosite comparison with delay');
+                                initPhosphositeComparison('phosphosite-comparison-container');
+                            }, 500); // Small delay to ensure DOM is fully ready
+                        }
+                    }
+                    
+                    function loadVisualizationScripts() {
+                        // Load phosphosite-visualization.js first
+                        const vizScript = document.createElement('script');
+                        vizScript.src = "/static/js/phosphosite-visualization.js";
+                        vizScript.onload = function() {
+                            console.log('phosphosite-visualization.js loaded');
+                            
+                            // Then load phosphosite-comparison.js
+                            const comparisonScript = document.createElement('script');
+                            comparisonScript.src = "/static/js/phosphosite-comparison.js";
+                            comparisonScript.onload = function() {
+                                console.log('phosphosite-comparison.js loaded');
+                                console.log('initPhosphositeComparison function now exists:', typeof window.initPhosphositeComparison === 'function');
+                                // Initialize the comparison visualization
+                                if (typeof window.initPhosphositeComparison === 'function') {
+                                    setTimeout(function() {
+                                        initPhosphositeComparison('phosphosite-comparison-container');
+                                    }, 500); // Small delay to ensure DOM is fully ready
+                                }
+                            };
+                            document.head.appendChild(comparisonScript);
+                        };
+                        document.head.appendChild(vizScript);
+                    }
+                });
+            </script>
+            '''
+            
             # Compile results
             results = {
                 'protein_info': protein_info,
                 'phosphosites': phosphosites,
                 'phosphosites_html': phosphosites_html,
                 'structural_matches': structural_matches,
+                'comparison_container_html': comparison_container_html,
+                'known_unknown_stats': known_unknown_stats,
+                'additional_scripts': additional_scripts,
                 'error': None
             }
             
@@ -807,15 +1127,154 @@ def phosphosite_analysis():
                                   phosphosites=results['phosphosites'],
                                   phosphosites_html=results.get('phosphosites_html'),
                                   structural_matches=results['structural_matches'],
+                                  comparison_container_html=results.get('comparison_container_html'),
+                                  known_unknown_stats=results.get('known_unknown_stats'),
+                                  additional_scripts=results.get('additional_scripts'),
                                   error=results.get('error'))
                 
         except Exception as e:
             logger.error(f"Error in phosphosite analysis: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             error = str(e)
             return render_template('phosphosite.html', error=error)
     
     # GET request - show empty form
     return render_template('phosphosite.html')
+
+# Helper function to create a fallback HTML table if enhanced_table fails
+def create_fallback_table_html(phosphosites, protein_uniprot_id):
+    """Create a basic HTML table for phosphosites if the enhanced table function fails."""
+    if not phosphosites:
+        return "<div class='alert alert-warning'>No phosphosite data available.</div>"
+    
+    html = """
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0">Phosphorylation Site Analysis</h5>
+            <small class="ms-4 text-muted" style="font-size: 0.85rem;">
+                <!-- Green legend box -->
+                <span style="background-color: #c8e6c9; display: inline-block; width: 15px; height: 15px; margin-right: 5px; border: 1px solid #bbb;"></span>
+                Has Structural Similarity Data
+                &nbsp;&nbsp;
+                <!-- Orange legend box -->
+                <span style="background-color: #ffcc80; display: inline-block; width: 15px; height: 15px; margin-right: 5px; border: 1px solid #bbb;"></span>
+                No Structural Similarity Data
+            </small>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover phosphosite-table">
+                    <thead class="thead-light">
+                        <tr>
+                            <th>Site</th>
+                            <th>Motif (-7 to +7)</th>
+                            <th>Mean pLDDT</th>
+                            <th>Site pLDDT</th>
+                            <th>Nearby Residues (10Å)</th>
+                            <th>Surface Access.</th>
+                            <th>Known</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="phosphosite-table">
+    """
+    
+    for site in phosphosites:
+        # Determine row style based on structural data availability
+        row_style = ""
+        if site.get('StructuralSimAvailable', False):
+            row_style = 'style="background-color: #c8e6c9;"'  # Green
+        else:
+            row_style = 'style="background-color: #ffcc80;"'  # Orange
+        
+        # Format numeric values for display
+        try:
+            mean_plddt = float(site.get('mean_plddt', 0))
+            mean_plddt_text = f"{mean_plddt:.2f}" if mean_plddt > 0 else "N/A"
+        except (ValueError, TypeError):
+            mean_plddt_text = site.get('mean_plddt', 'N/A')
+        
+        try:
+            site_plddt = float(site.get('site_plddt', 0))
+            site_plddt_text = f"{site_plddt:.2f}" if site_plddt > 0 else "N/A"
+        except (ValueError, TypeError):
+            site_plddt_text = site.get('site_plddt', 'N/A')
+        
+        try:
+            surface_access = float(site.get('surface_accessibility', 0))
+            surface_access_text = f"{surface_access:.2f}%" if surface_access > 0 else "N/A"
+        except (ValueError, TypeError):
+            surface_access_text = site.get('surface_accessibility', 'N/A')
+        
+        # Get values for data attributes
+        resno = site.get('resno', 0)
+        site_type = site.get('siteType', '')
+        nearby_count = site.get('nearby_count', 0)
+        mean_plddt_val = site.get('mean_plddt', 0)
+        surface_access_val = site.get('surface_accessibility', 0)
+        is_known = str(site.get('is_known', False)).lower()
+        
+        # Add data attributes to the row for better visualization
+        data_attrs = f"""
+            data-site="{site.get('site', '')}" 
+            data-resno="{resno}" 
+            data-type="{site_type}"
+            data-plddt="{mean_plddt_val}" 
+            data-nearby="{nearby_count}"
+            data-surface="{surface_access_val}"
+            data-known="{is_known}"
+        """
+        
+        html += f"""
+        <tr {row_style} {data_attrs}>
+            <td><a href="/site/{protein_uniprot_id}/{site.get('site', '')}" class="site-link" data-resno="{resno}">{site.get('site', '')}</a></td>
+            <td><code class="motif-sequence">{site.get('motif', '')}</code></td>
+            <td>{mean_plddt_text}</td>
+            <td>{site_plddt_text}</td>
+            <td>{nearby_count}</td>
+            <td>{surface_access_text}</td>
+            <td>{"Yes" if site.get('is_known', False) else "No"}</td>
+            <td>
+                <a href="/site/{protein_uniprot_id}/{site.get('site', '')}" class="btn btn-sm btn-outline-primary">
+                    Details
+                </a>
+            </td>
+        </tr>
+        """
+    
+    html += """
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add click handlers to site links
+            const siteLinks = document.querySelectorAll('.site-link');
+            siteLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const resno = this.getAttribute('data-resno');
+                    
+                    // Find the span in the sequence viewer
+                    const sequenceSpans = document.querySelectorAll('.sequence-viewer span');
+                    if (sequenceSpans.length > 0) {
+                        // Find and click the span for this residue
+                        const index = parseInt(resno) - 1;
+                        if (index >= 0 && index < sequenceSpans.length) {
+                            sequenceSpans[index].click();
+                        }
+                    }
+                });
+            });
+        });
+    </script>
+    """
+    
+    return html
 
 # Add this to app.py
 @app.route('/api/sequence_matches/<site_id>', methods=['GET'])

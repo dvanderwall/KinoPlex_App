@@ -61,6 +61,30 @@
             font-style: italic;
             display: none; /* This will be hidden once content is loaded */
         }
+        /* Style for the comparison container */
+        #phosphosite-comparison-container {
+            min-height: 400px;
+            border: 1px dashed #ccc;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        #phosphosite-comparison-container::before {
+            content: "Comparison Visualization Container";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #aaa;
+            font-style: italic;
+            display: none; /* This will be hidden once content is loaded */
+        }
+        /* Add styles for the comparison visualizations */
+        .chart-container {
+            margin-bottom: 1.5rem;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            border-radius: 0.25rem;
+            overflow: hidden;
+        }
     </style>
 </head>
 <body>
@@ -146,8 +170,24 @@
             </div>
         </div>
 
-        <!-- Visualization Container -->
+        <!-- Visualization Containers -->
+        <!-- Standard visualization container -->
         <div id="phosphosite-visualization-container"></div>
+        
+        <!-- Comparison visualization container (initially hidden) -->
+        {% if comparison_container_html %}
+            {{ comparison_container_html|safe }}
+        {% else %}
+            <div id="phosphosite-comparison-container" class="comparison-container mb-4">
+                <!-- Phosphosite comparison visualizations will be loaded here -->
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading comparison visualizations...</p>
+                </div>
+            </div>
+        {% endif %}
 
         <!-- Results Section -->
         {% if protein_info %}
@@ -157,6 +197,31 @@
             </div>
             <div class="card-body">
                 <h5>{{ protein_info.name }}</h5>
+                
+                {% if known_unknown_stats %}
+                <div class="row mt-3 mb-3">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title">Phosphosite Statistics</h6>
+                                <div class="d-flex justify-content-between">
+                                    <span>Known Phosphosites:</span>
+                                    <strong>{{ known_unknown_stats.known_count }}</strong>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span>Potential Phosphosites:</span>
+                                    <strong>{{ known_unknown_stats.unknown_count }}</strong>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span>Total STY Sites:</span>
+                                    <strong>{{ known_unknown_stats.total_count }}</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
                 <div class="d-flex flex-wrap mt-3">
                     <a href="/protein/{{ protein_info.uniprot_id }}" class="btn btn-outline-primary me-2 mb-2">
                         View Full Protein Details
@@ -358,6 +423,7 @@
       document.addEventListener('DOMContentLoaded', function() {
         console.log('DOM fully loaded');
         console.log('Phosphosite container exists:', !!document.getElementById('phosphosite-visualization-container'));
+        console.log('Comparison container exists:', !!document.getElementById('phosphosite-comparison-container'));
         console.log('Bootstrap version:', typeof bootstrap !== 'undefined' ? 'Loaded' : 'Not loaded');
         console.log('Chart.js version:', typeof Chart !== 'undefined' ? 'Loaded' : 'Not loaded');
       });
@@ -372,6 +438,13 @@
       // Check if Chart.js loaded properly
       if (typeof Chart === 'undefined') {
         console.error('Chart.js failed to load! Trying to load it again...');
+        // Try to load it again
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js';
+        script.onload = function() {
+          console.log('Chart.js loaded successfully on retry');
+        };
+        document.head.appendChild(script);
       } else {
         console.log('Chart.js successfully loaded');
       }
@@ -380,6 +453,13 @@
     <!-- Main Visualization Script -->
     <script src="{{ url_for('static', filename='js/phosphosite-visualization.js') }}"></script>
     
+    <!-- Phosphosite Comparison Script -->
+    <script src="{{ url_for('static', filename='js/phosphosite-comparison.js') }}"></script>
+    
+    <!-- Additional scripts from app.py if available -->
+    {% if additional_scripts %}
+        {{ additional_scripts|safe }}
+    {% endif %}
     
 </body>
 </html>
