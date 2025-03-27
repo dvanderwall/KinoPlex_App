@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Phosphosite Structural Analysis - Protein Explorer</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Add our enhanced CSS -->
+    <link href="{{ url_for('static', filename='css/phosphosite-enhanced.css') }}" rel="stylesheet">
     <style>
         .phosphosite-table {
             font-size: 0.9rem;
@@ -51,39 +53,115 @@
             margin-bottom: 20px;
             position: relative;
         }
-        #phosphosite-visualization-container::before {
-            content: "Visualization Container";
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: #aaa;
-            font-style: italic;
-            display: none; /* This will be hidden once content is loaded */
-        }
-        /* Style for the comparison container */
         #phosphosite-comparison-container {
             min-height: 400px;
             border: 1px dashed #ccc;
             margin-bottom: 20px;
             position: relative;
         }
-        #phosphosite-comparison-container::before {
-            content: "Comparison Visualization Container";
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: #aaa;
-            font-style: italic;
-            display: none; /* This will be hidden once content is loaded */
-        }
         /* Add styles for the comparison visualizations */
         .chart-container {
+            position: relative;
             margin-bottom: 1.5rem;
             box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
             border-radius: 0.25rem;
             overflow: hidden;
+            padding: 10px;
+        }
+
+        canvas {
+            margin-bottom: 5px;
+        }
+
+        .text-muted p {
+            margin-bottom: 0.5rem;
+        }
+        
+        #boxplot-visualization,
+        #histogram-visualization {
+            overflow: visible;
+        }
+        
+        #scatter-visualization {
+            padding-bottom: 30px;
+        }
+        
+        /* Make sure the dropdown has proper margins */
+        #metric-selector {
+            max-width: 400px;
+            margin: 0 auto;
+            display: block;
+        }
+        
+        /* More space around chart titles */
+        .chart-header {
+            margin-bottom: 20px;
+        }
+        
+        /* Better legend positioning */
+        .d-flex.justify-content-center.mt-3 {
+            margin-top: 20px !important;
+            margin-bottom: 10px;
+        }
+
+        /* Additional styles for both visualizations displayed */
+        /* Better spacing between the two visualization sections */
+        #comparison-section-title {
+          border-top: 1px solid #dee2e6;
+          padding-top: 1.5rem;
+          margin-top: 2rem;
+          color: #0d6efd;
+        }
+
+        /* Improved container styling */
+        #phosphosite-visualization-container,
+        #phosphosite-comparison-container {
+          min-height: 100px; /* Reduce the minimum height */
+          border: none; /* Remove the dashed border */
+          margin-bottom: 1rem;
+        }
+
+        /* When a container has content, add some spacing */
+        #phosphosite-visualization-container:not(:empty),
+        #phosphosite-comparison-container:not(:empty) {
+          background-color: white;
+          border-radius: 8px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+          padding: 0.5rem;
+        }
+
+        /* Hide the placeholder text */
+        #phosphosite-visualization-container::before,
+        #phosphosite-comparison-container::before {
+          display: none !important;
+        }
+
+        /* Improved loading spinner */
+        .loading-container {
+          background-color: #f8f9fa;
+          border-radius: 8px;
+          padding: 2rem;
+          margin: 1rem 0;
+          text-align: center;
+        }
+
+        /* Style section headers consistently */
+        .card-header h5, #comparison-section-title {
+          font-weight: 500;
+          font-size: 1.25rem;
+        }
+
+        /* Create a divider with some visual appeal */
+        .section-divider {
+          height: 4px;
+          background: linear-gradient(to right, #0d6efd, #6ea8fe);
+          border-radius: 2px;
+          margin: 2rem 0;
+        }
+
+        /* Ensure charts don't get cut off */
+        .chart-container {
+          overflow: visible !important;
         }
     </style>
 </head>
@@ -132,12 +210,12 @@
         {% endif %}
 
         <!-- Search Form -->
-        <div class="card mb-4">
+        <div class="card mb-4 form-container">
             <div class="card-header">
                 <h5 class="mb-0">Select Protein</h5>
             </div>
             <div class="card-body">
-                <form method="post">
+                <form method="post" id="phosphosite-form">
                     <div class="row">
                         <div class="col-md-3">
                             <div class="mb-3">
@@ -162,7 +240,7 @@
                         </div>
                         <div class="col-md-2 d-flex align-items-end">
                             <div class="mb-3 w-100">
-                                <button type="submit" class="btn btn-primary w-100">Analyze</button>
+                                <button type="submit" class="btn btn-primary w-100" id="analyze-btn">Analyze</button>
                             </div>
                         </div>
                     </div>
@@ -170,159 +248,137 @@
             </div>
         </div>
 
-        <!-- Visualization Containers -->
-        <!-- Standard visualization container -->
-        <div id="phosphosite-visualization-container"></div>
-        
-        <!-- Comparison visualization container (initially hidden) -->
+        <!-- Initial Loading Indicator - Shown during form submission -->
+        <div id="loading-indicator" class="loading-container" style="display:none;">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-3">Analyzing phosphosite data...</p>
+        </div>
+
+        <!-- View selector buttons - hidden but kept for compatibility -->
+        <div class="view-selector btn-group mb-3" role="group" aria-label="Visualization Options" style="display:none;">
+            <button type="button" class="btn btn-primary active" data-view="standard" id="standard-view-btn">Standard View</button>
+            <button type="button" class="btn btn-outline-primary" data-view="comparison" id="comparison-view-btn">Known vs Unknown Comparison</button>
+        </div>
+
+        <!-- Visualization Containers - both will be displayed -->
+        <div id="phosphosite-visualization-container" style="display:block;"></div>
+
+        <!-- Heading for the comparison section -->
+        <h3 class="mt-5 mb-3" id="comparison-section-title">Known vs Unknown Phosphosite Comparison</h3>
+
+        <!-- Comparison visualization container (initially has a loading spinner) -->
         {% if comparison_container_html %}
-            {{ comparison_container_html|safe }}
+            <div id="phosphosite-comparison-container" style="display:block;">{{ comparison_container_html|safe }}</div>
         {% else %}
-            <div id="phosphosite-comparison-container" class="comparison-container mb-4">
-                <!-- Phosphosite comparison visualizations will be loaded here -->
+            <div id="phosphosite-comparison-container" style="display:block;">
+                <!-- Loading spinner that will be replaced with actual content -->
                 <div class="text-center py-4">
                     <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
+                        <span class="visually-hidden">Loading comparison data...</span>
                     </div>
                     <p class="mt-2">Loading comparison visualizations...</p>
                 </div>
             </div>
         {% endif %}
 
-        <!-- Results Section -->
+        <!-- Results Section - Only shown after query -->
         {% if protein_info %}
-        <div class="card mb-4">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">{{ protein_info.gene_symbol }} ({{ protein_info.uniprot_id }})</h5>
-            </div>
-            <div class="card-body">
-                <h5>{{ protein_info.name }}</h5>
-                
-                {% if known_unknown_stats %}
-                <div class="row mt-3 mb-3">
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-body">
-                                <h6 class="card-title">Phosphosite Statistics</h6>
-                                <div class="d-flex justify-content-between">
-                                    <span>Known Phosphosites:</span>
-                                    <strong>{{ known_unknown_stats.known_count }}</strong>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <span>Potential Phosphosites:</span>
-                                    <strong>{{ known_unknown_stats.unknown_count }}</strong>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <span>Total STY Sites:</span>
-                                    <strong>{{ known_unknown_stats.total_count }}</strong>
+        <div class="results-container">
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">{{ protein_info.gene_symbol }} ({{ protein_info.uniprot_id }})</h5>
+                </div>
+                <div class="card-body">
+                    <h5>{{ protein_info.name }}</h5>
+                    
+                    {% if known_unknown_stats %}
+                    <div class="row mt-3 mb-3">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6 class="card-title">Phosphosite Statistics</h6>
+                                    <div class="d-flex justify-content-between">
+                                        <span>Known Phosphosites:</span>
+                                        <strong>{{ known_unknown_stats.known_count }}</strong>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <span>Potential Phosphosites:</span>
+                                        <strong>{{ known_unknown_stats.unknown_count }}</strong>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <span>Total STY Sites:</span>
+                                        <strong>{{ known_unknown_stats.total_count }}</strong>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-                {% endif %}
-                
-                <div class="d-flex flex-wrap mt-3">
-                    <a href="/protein/{{ protein_info.uniprot_id }}" class="btn btn-outline-primary me-2 mb-2">
-                        View Full Protein Details
-                    </a>
-                    <a href="/network/{{ protein_info.uniprot_id }}" class="btn btn-outline-primary me-2 mb-2">
-                        View Interaction Network
-                    </a>
-                    <a href="https://www.uniprot.org/uniprotkb/{{ protein_info.uniprot_id }}" 
-                       class="btn btn-outline-secondary me-2 mb-2" target="_blank">
-                        View on UniProt
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Phosphorylation Sites -->
-        {% if phosphosites %}
-        {% if phosphosites_html %}
-            {{ phosphosites_html|safe }}
-        {% else %}
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h5 class="mb-0">Phosphorylation Site Analysis</h5>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-striped table-hover phosphosite-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Site</th>
-                                    <th>Motif (-7 to +7)</th>
-                                    <th>Mean pLDDT</th>
-                                    <th>Nearby Residues (10Å)</th>
-                                    <th>Known in PhosphositePlus</th>
-                                    <th>Structural Matches</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for site in phosphosites %}
-                                <tr>
-                                    <td>
-                                        <a href="/site/{{ protein_info.uniprot_id }}/{{ site.site }}" class="text-decoration-none">
-                                            <strong id="site-{{ site.resno }}">{{ site.site }}</strong>
-                                        </a>
-                                    </td>
-                                    <td><code class="motif-sequence">{{ site.motif }}</code></td>
-                                    <td>{{ site.mean_plddt }}</td>
-                                    <td>{{ site.nearby_count }}</td>
-                                    <td>{{ "Yes" if site.is_known else "No" }}</td>
-                                    <td>
-                                        {% if structural_matches and site.site in structural_matches %}
-                                            <span class="badge bg-success">{{ structural_matches[site.site]|length }} matches</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">No matches</span>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                    {% endif %}
+                    
+                    <div class="d-flex flex-wrap mt-3">
+                        <a href="/protein/{{ protein_info.uniprot_id }}" class="btn btn-outline-primary me-2 mb-2">
+                            View Full Protein Details
+                        </a>
+                        <a href="/network/{{ protein_info.uniprot_id }}" class="btn btn-outline-primary me-2 mb-2">
+                            View Interaction Network
+                        </a>
+                        <a href="https://www.uniprot.org/uniprotkb/{{ protein_info.uniprot_id }}" 
+                           class="btn btn-outline-secondary me-2 mb-2" target="_blank">
+                            View on UniProt
+                        </a>
                     </div>
                 </div>
             </div>
-        {% endif %}
-        {% endif %}
 
-        <!-- Structural Matches -->
-        {% if structural_matches %}
-        <h2 class="mb-3">Structural Similarity Matches</h2>
-        <p class="text-muted mb-4">
-            Showing phosphosites with structural similarity to other kinase-binding sites.
-            Lower RMSD values indicate higher structural similarity.
-        </p>
-        
-        <div class="row">
-            {% for site, matches in structural_matches.items() %}
-            <div class="col-md-6">
-                <div class="card match-card">
+            <!-- Phosphorylation Sites -->
+            {% if phosphosites %}
+            {% if phosphosites_html %}
+                {{ phosphosites_html|safe }}
+            {% else %}
+                <div class="card mb-4">
                     <div class="card-header">
-                        <h5 class="mb-0">Site: {{ site }} Matches</h5>
+                        <h5 class="mb-0">Phosphorylation Site Analysis</h5>
                     </div>
                     <div class="card-body p-0">
                         <div class="table-responsive">
-                            <table class="table table-sm table-hover match-table mb-0">
+                            <table class="table table-striped table-hover phosphosite-table">
                                 <thead class="table-light">
                                     <tr>
-                                        <th>Target Protein</th>
-                                        <th>Target Site</th>
-                                        <th>RMSD (Å)</th>
+                                        <th>Site</th>
+                                        <th>Motif (-7 to +7)</th>
+                                        <th>Mean pLDDT</th>
+                                        <th>Nearby Residues (10Å)</th>
+                                        <th>Known in PhosphositePlus</th>
+                                        <th>Structural Matches</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for match in matches %}
-                                    <tr class="{% if match.rmsd < 1.0 %}low-rmsd{% elif match.rmsd < 2.0 %}medium-rmsd{% elif match.rmsd > 3.0 %}high-rmsd{% endif %}">
+                                    {% for site in phosphosites %}
+                                    <tr data-site="{{ site.site }}" 
+                                       data-resno="{{ site.resno }}" 
+                                       data-type="{{ site.siteType }}"
+                                       data-plddt="{{ site.mean_plddt }}" 
+                                       data-nearby="{{ site.nearby_count }}"
+                                       data-surface="{{ site.surface_accessibility }}"
+                                       data-known="{{ site.is_known|lower }}">
                                         <td>
-                                            <a href="/protein/{{ match.target_uniprot }}" target="_blank">
-                                                {{ match.target_uniprot }}
+                                            <a href="/site/{{ protein_info.uniprot_id }}/{{ site.site }}" class="text-decoration-none">
+                                                <strong id="site-{{ site.resno }}">{{ site.site }}</strong>
                                             </a>
                                         </td>
-                                        <td>{{ match.target_site }}</td>
-                                        <td>{{ "%.2f"|format(match.rmsd) }}</td>
+                                        <td><code class="motif-sequence">{{ site.motif }}</code></td>
+                                        <td>{{ site.mean_plddt }}</td>
+                                        <td>{{ site.nearby_count }}</td>
+                                        <td>{{ "Yes" if site.is_known else "No" }}</td>
+                                        <td>
+                                            {% if structural_matches and site.site in structural_matches %}
+                                                <span class="badge bg-success">{{ structural_matches[site.site]|length }} matches</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">No matches</span>
+                                            {% endif %}
+                                        </td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
@@ -330,11 +386,56 @@
                         </div>
                     </div>
                 </div>
+            {% endif %}
+            {% endif %}
+
+            <!-- Structural Matches -->
+            {% if structural_matches %}
+            <h2 class="mb-3">Structural Similarity Matches</h2>
+            <p class="text-muted mb-4">
+                Showing phosphosites with structural similarity to other kinase-binding sites.
+                Lower RMSD values indicate higher structural similarity.
+            </p>
+            
+            <div class="row">
+                {% for site, matches in structural_matches.items() %}
+                <div class="col-md-6">
+                    <div class="card match-card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Site: {{ site }} Matches</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover match-table mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Target Protein</th>
+                                            <th>Target Site</th>
+                                            <th>RMSD (Å)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for match in matches %}
+                                        <tr class="{% if match.rmsd < 1.0 %}low-rmsd{% elif match.rmsd < 2.0 %}medium-rmsd{% elif match.rmsd > 3.0 %}high-rmsd{% endif %}">
+                                            <td>
+                                                <a href="/protein/{{ match.target_uniprot }}" target="_blank">
+                                                    {{ match.target_uniprot }}
+                                                </a>
+                                            </td>
+                                            <td>{{ match.target_site }}</td>
+                                            <td>{{ "%.2f"|format(match.rmsd) }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
             </div>
-            {% endfor %}
+            {% endif %}
         </div>
-        {% endif %}
-        
         {% endif %}
     </div>
 
@@ -347,6 +448,10 @@
 
     <!-- JavaScript Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Chart.js (Add explicit version for better control) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     
     <!-- Bootstrap Tab Initialization -->
     <script>
@@ -417,37 +522,98 @@
       }
     </script>
 
-    <!-- Debugging Script -->
+    <!-- Enhanced Chart.js Verification and Initialization Script -->
     <script>
-      console.log('Page loaded, checking for visualization container...');
+      // Robust initialization function for visualizations
       document.addEventListener('DOMContentLoaded', function() {
-        console.log('DOM fully loaded');
-        console.log('Phosphosite container exists:', !!document.getElementById('phosphosite-visualization-container'));
-        console.log('Comparison container exists:', !!document.getElementById('phosphosite-comparison-container'));
-        console.log('Bootstrap version:', typeof bootstrap !== 'undefined' ? 'Loaded' : 'Not loaded');
-        console.log('Chart.js version:', typeof Chart !== 'undefined' ? 'Loaded' : 'Not loaded');
+        console.log('DOM fully loaded, initializing visualizations');
+        
+        // Form submission handler
+        const form = document.getElementById('phosphosite-form');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        
+        if (form) {
+            form.addEventListener('submit', function() {
+                // Show loading indicator
+                if (loadingIndicator) {
+                    loadingIndicator.style.display = 'block';
+                }
+            });
+        }
+        
+        function initializeVisualizations() {
+          // Get visualization containers
+          const standardContainer = document.getElementById('phosphosite-visualization-container');
+          const comparisonContainer = document.getElementById('phosphosite-comparison-container');
+          
+          // Make sure both containers are shown
+          if (standardContainer) standardContainer.style.display = 'block';
+          if (comparisonContainer) comparisonContainer.style.display = 'block';
+          
+          // Initialize standard visualization if container exists
+          if (standardContainer) {
+            console.log('Found standard visualization container');
+            if (typeof window.createPhosphositeVisualization === 'function') {
+              window.createPhosphositeVisualization('phosphosite-visualization-container');
+            } else {
+              console.error('Standard visualization function not found');
+            }
+          }
+          
+          // Initialize comparison visualization if container exists
+          if (comparisonContainer) {
+            console.log('Found comparison visualization container');
+            if (typeof window.initPhosphositeComparison === 'function') {
+              window.initPhosphositeComparison('phosphosite-comparison-container');
+            } else {
+              console.error('Comparison visualization function not found');
+              // Try to load the script again
+              const script = document.createElement('script');
+              script.src = "{{ url_for('static', filename='js/phosphosite-comparison.js') }}";
+              script.onload = function() {
+                console.log('Comparison script reloaded');
+                if (typeof window.initPhosphositeComparison === 'function') {
+                  window.initPhosphositeComparison('phosphosite-comparison-container');
+                }
+              };
+              document.head.appendChild(script);
+            }
+          }
+          
+          // Hide the toggle buttons
+          const toggleButtons = document.querySelectorAll('.view-selector, .btn-group button[data-view]');
+          toggleButtons.forEach(button => {
+            button.style.display = 'none';
+          });
+        }
+        
+        // Check if Chart.js is properly loaded
+        if (typeof Chart === 'undefined') {
+          console.warn('Chart.js not loaded yet, loading it now');
+          
+          // Load Chart.js
+          const chartScript = document.createElement('script');
+          chartScript.src = 'https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js';
+          chartScript.onload = function() {
+            console.log('Chart.js loaded successfully');
+            
+            // Load annotation plugin
+            const annotationScript = document.createElement('script');
+            annotationScript.src = 'https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.0.1/dist/chartjs-plugin-annotation.min.js';
+            annotationScript.onload = function() {
+              console.log('Annotation plugin loaded');
+              
+              // Now that Chart.js is loaded, initialize visualizations
+              initializeVisualizations();
+            };
+            document.head.appendChild(annotationScript);
+          };
+          document.head.appendChild(chartScript);
+        } else {
+          console.log('Chart.js already loaded, initializing visualizations directly');
+          initializeVisualizations();
+        }
       });
-    </script>
-    
-    <!-- Chart.js and Visualization Scripts -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.0.1/dist/chartjs-plugin-annotation.min.js"></script>
-    
-    <!-- Chart.js Verification -->
-    <script>
-      // Check if Chart.js loaded properly
-      if (typeof Chart === 'undefined') {
-        console.error('Chart.js failed to load! Trying to load it again...');
-        // Try to load it again
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js';
-        script.onload = function() {
-          console.log('Chart.js loaded successfully on retry');
-        };
-        document.head.appendChild(script);
-      } else {
-        console.log('Chart.js successfully loaded');
-      }
     </script>
     
     <!-- Main Visualization Script -->
@@ -455,6 +621,9 @@
     
     <!-- Phosphosite Comparison Script -->
     <script src="{{ url_for('static', filename='js/phosphosite-comparison.js') }}"></script>
+    
+    <!-- UI Improvements Script -->
+    <script src="{{ url_for('static', filename='js/phosphosite-ui.js') }}"></script>
     
     <!-- Additional scripts from app.py if available -->
     {% if additional_scripts %}

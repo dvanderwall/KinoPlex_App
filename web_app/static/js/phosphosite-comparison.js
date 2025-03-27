@@ -82,7 +82,7 @@ const COMPARISON_CONFIG = {
       return;
     }
     
-    // Create the container structure for the visualizations
+    // Create the container structure for the visualizations with improved spacing
     container.innerHTML = `
       <div class="card">
         <div class="card-header">
@@ -104,20 +104,20 @@ const COMPARISON_CONFIG = {
             </div>
           </div>
           
-          <div class="row mb-3">
+          <div class="row mb-4">
             <div class="col-lg-6 mb-4">
-              <div id="summary-visualization" style="height: 400px;"></div>
+              <div id="summary-visualization" style="height: 450px;"></div>
             </div>
             <div class="col-lg-6 mb-4">
-              <div id="distribution-visualization" style="height: 400px;"></div>
+              <div id="distribution-visualization" style="height: 450px;"></div>
             </div>
           </div>
           
-          <div class="row mb-3">
+          <div class="row mb-4">
             <div class="col-12">
               <div class="mb-3">
                 <label for="metric-selector" class="form-label">Select metric to visualize:</label>
-                <select class="form-select" id="metric-selector">
+                <select class="form-select" id="metric-selector" style="max-width: 400px; margin: 0 auto;">
                   ${COMPARISON_CONFIG.metrics.map((metric, index) => 
                     `<option value="${metric.id}" ${index === 0 ? 'selected' : ''}>${metric.name}</option>`
                   ).join('')}
@@ -126,33 +126,31 @@ const COMPARISON_CONFIG = {
             </div>
           </div>
           
-          <div class="row">
+          <div class="row mb-4">
             <div class="col-lg-6 mb-4">
-              <div id="boxplot-visualization" style="height: 350px;"></div>
+              <div id="boxplot-visualization" style="height: 400px;"></div>
             </div>
             <div class="col-lg-6 mb-4">
-              <div id="histogram-visualization" style="height: 350px;"></div>
+              <div id="histogram-visualization" style="height: 400px;"></div>
             </div>
           </div>
           
-          <div class="row">
-            <div class="col-12 mb-4">
-              <div id="siteType-comparison" style="height: 300px;"></div>
+          <div class="row mb-4">
+            <div class="col-12">
+              <div id="siteType-comparison" style="height: 350px;"></div>
             </div>
           </div>
           
-          <div class="row">
-            <div class="col-12 mb-4">
-              <div id="scatter-visualization" style="height: 400px;"></div>
+          <div class="row mb-4">
+            <div class="col-12">
+              <div id="scatter-visualization" style="height: 450px;"></div>
             </div>
           </div>
           
           <div class="row">
             <div class="col-12">
-              <p class="text-muted mb-0">
-                <em>These visualizations compare the structural and biochemical properties of known phosphorylation sites
-                versus potential (not yet verified) sites. Significant differences may indicate structural or
-                sequence features that are characteristic of functional phosphorylation sites.</em>
+              <p class="text-muted mb-0 p-2">
+                <em>.</em>
               </p>
             </div>
           </div>
@@ -164,8 +162,17 @@ const COMPARISON_CONFIG = {
     createSummaryVisualization('summary-visualization', knownSites, unknownSites);
     createDistributionVisualization('distribution-visualization', knownSites, unknownSites);
     
-    // Create the initial boxplot and histogram with the first metric
-    const initialMetric = COMPARISON_CONFIG.metrics[0].id;
+    // Get the initial metric from the dropdown
+    const metricSelector = document.getElementById('metric-selector');
+    let initialMetric = COMPARISON_CONFIG.metrics[0].id;
+    
+    if (metricSelector && metricSelector.value) {
+      initialMetric = metricSelector.value;
+    }
+    
+    console.log(`Creating initial detailed visualizations for metric: ${initialMetric}`);
+    
+    // Create the initial boxplot and histogram with the selected metric
     createBoxPlotVisualization('boxplot-visualization', knownSites, unknownSites, initialMetric);
     createHistogramVisualization('histogram-visualization', knownSites, unknownSites, initialMetric);
     
@@ -176,15 +183,47 @@ const COMPARISON_CONFIG = {
     createScatterVisualization('scatter-visualization', knownSites, unknownSites);
     
     // Set up event listener for metric selector
-    const metricSelector = document.getElementById('metric-selector');
     if (metricSelector) {
+      console.log('Setting up event listener for metric selector');
+      
       metricSelector.addEventListener('change', function() {
         const selectedMetric = this.value;
-        // Update the visualizations with the new metric
-        createBoxPlotVisualization('boxplot-visualization', knownSites, unknownSites, selectedMetric);
-        createHistogramVisualization('histogram-visualization', knownSites, unknownSites, selectedMetric);
+        console.log(`Metric selection changed to: ${selectedMetric}`);
+        
+        // Clear previous visualizations to avoid chart stacking issues
+        const boxplotContainer = document.getElementById('boxplot-visualization');
+        const histogramContainer = document.getElementById('histogram-visualization');
+        
+        if (boxplotContainer) boxplotContainer.innerHTML = '';
+        if (histogramContainer) histogramContainer.innerHTML = '';
+        
+        // Update the visualizations with a small delay to ensure DOM is ready
+        setTimeout(function() {
+          // Update the visualizations with the new metric
+          createBoxPlotVisualization('boxplot-visualization', knownSites, unknownSites, selectedMetric);
+          createHistogramVisualization('histogram-visualization', knownSites, unknownSites, selectedMetric);
+        }, 50);
       });
+    } else {
+      console.error('Metric selector not found in the DOM after container HTML was set');
     }
+    
+    // Add a resize handler to update charts when window size changes
+    window.addEventListener('resize', function() {
+      console.log('Window resized, updating charts');
+      
+      // Use a small timeout to avoid too many updates during resize
+      clearTimeout(window.resizeTimer);
+      window.resizeTimer = setTimeout(function() {
+        // Refresh all charts if necessary
+        const metricSelector = document.getElementById('metric-selector');
+        if (metricSelector) {
+          const selectedMetric = metricSelector.value;
+          createBoxPlotVisualization('boxplot-visualization', knownSites, unknownSites, selectedMetric);
+          createHistogramVisualization('histogram-visualization', knownSites, unknownSites, selectedMetric);
+        }
+      }, 250);
+    });
   }
   
   /**
@@ -424,10 +463,17 @@ const COMPARISON_CONFIG = {
             text: 'Average Metrics Comparison',
             font: {
               size: 16
+            },
+            padding: {
+              top: 10,
+              bottom: 20
             }
           },
           legend: {
-            position: 'bottom'
+            position: 'bottom',
+            labels: {
+              padding: 20
+            }
           },
           tooltip: {
             callbacks: {
@@ -443,14 +489,34 @@ const COMPARISON_CONFIG = {
             beginAtZero: true,
             title: {
               display: true,
-              text: 'Average Value'
+              text: 'Average Value',
+              padding: {
+                bottom: 10
+              }
+            },
+            ticks: {
+              padding: 5
             }
           },
           x: {
             title: {
               display: true,
-              text: 'Metric'
+              text: 'Metric',
+              padding: {
+                top: 15
+              }
+            },
+            ticks: {
+              padding: 5
             }
+          }
+        },
+        layout: {
+          padding: {
+            left: 10,
+            right: 10,
+            top: 0,
+            bottom: 30
           }
         }
       }
@@ -485,14 +551,18 @@ const COMPARISON_CONFIG = {
     const knownPercentages = knownCounts.map(count => (count / knownTotal) * 100);
     const unknownPercentages = unknownCounts.map(count => (count / unknownTotal) * 100);
     
-    // Create the pie charts using Chart.js
+    // Create the pie charts using Chart.js with improved layout
     container.innerHTML = `
       <div class="row">
-        <div class="col-6">
-          <canvas id="known-distribution-chart"></canvas>
+        <div class="col-6 mb-3">
+          <div style="position: relative; height: 100%;">
+            <canvas id="known-distribution-chart"></canvas>
+          </div>
         </div>
-        <div class="col-6">
-          <canvas id="unknown-distribution-chart"></canvas>
+        <div class="col-6 mb-3">
+          <div style="position: relative; height: 100%;">
+            <canvas id="unknown-distribution-chart"></canvas>
+          </div>
         </div>
       </div>
     `;
@@ -525,10 +595,19 @@ const COMPARISON_CONFIG = {
             text: 'Known Sites Distribution',
             font: {
               size: 16
+            },
+            padding: {
+              top: 10,
+              bottom: 10
             }
           },
           legend: {
-            position: 'bottom'
+            position: 'bottom',
+            labels: {
+              padding: 15,
+              boxWidth: 12,
+              boxHeight: 12
+            }
           },
           tooltip: {
             callbacks: {
@@ -538,6 +617,9 @@ const COMPARISON_CONFIG = {
               }
             }
           }
+        },
+        layout: {
+          padding: 20
         }
       }
     });
@@ -563,10 +645,19 @@ const COMPARISON_CONFIG = {
             text: 'Unknown Sites Distribution',
             font: {
               size: 16
+            },
+            padding: {
+              top: 10,
+              bottom: 10
             }
           },
           legend: {
-            position: 'bottom'
+            position: 'bottom',
+            labels: {
+              padding: 15,
+              boxWidth: 12,
+              boxHeight: 12
+            }
           },
           tooltip: {
             callbacks: {
@@ -576,6 +667,9 @@ const COMPARISON_CONFIG = {
               }
             }
           }
+        },
+        layout: {
+          padding: 20
         }
       }
     });
@@ -589,170 +683,147 @@ const COMPARISON_CONFIG = {
    * @param {string} metricId - ID of the metric to visualize
    */
   function createBoxPlotVisualization(containerId, knownSites, unknownSites, metricId) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    
-    // Map metric ID to property name
-    let propName;
-    switch (metricId) {
-      case 'plddt': propName = 'meanPlddt'; break;
-      case 'site_plddt': propName = 'sitePlddt'; break;
-      case 'nearby': propName = 'nearbyCount'; break;
-      case 'surface': propName = 'surfaceAccessibility'; break;
-      case 'acidic': propName = 'acidicPercentage'; break;
-      case 'basic': propName = 'basicPercentage'; break;
-      default: propName = metricId;
-    }
-    
-    // Get the metric configuration
-    const metricConfig = COMPARISON_CONFIG.metrics.find(m => m.id === metricId) || {
-      name: metricId.charAt(0).toUpperCase() + metricId.slice(1),
-      format: (value) => value.toFixed(1)
-    };
-    
-    // Extract values, filtering out NaN/null values
-    const knownValues = knownSites.map(site => site[propName]).filter(v => !isNaN(v) && v !== null);
-    const unknownValues = unknownSites.map(site => site[propName]).filter(v => !isNaN(v) && v !== null);
-    
-    // If not enough data, show warning
-    if (knownValues.length < 5 || unknownValues.length < 5) {
-      container.innerHTML = `<div class="alert alert-warning">
-        Not enough data to create box plot for ${metricConfig.name}. Need at least 5 values in each group.
-      </div>`;
-      return;
-    }
-    
-    // Calculate box plot statistics for known sites
-    const knownStats = calculateBoxPlotStats(knownValues);
-    
-    // Calculate box plot statistics for unknown sites
-    const unknownStats = calculateBoxPlotStats(unknownValues);
-    
-    // Create canvas for the chart
-    container.innerHTML = '';
-    const canvas = document.createElement('canvas');
-    container.appendChild(canvas);
-    
-    // Create the box plot
-    new Chart(canvas, {
-      type: 'bar',
-      data: {
-        labels: ['Known Sites', 'Unknown Sites'],
-        datasets: [
-          // Min to Max lines
-          {
-            label: 'Min/Max Range',
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      
+      // Map metric ID to property name
+      let propName;
+      switch (metricId) {
+        case 'plddt': propName = 'meanPlddt'; break;
+        case 'site_plddt': propName = 'sitePlddt'; break;
+        case 'nearby': propName = 'nearbyCount'; break;
+        case 'surface': propName = 'surfaceAccessibility'; break;
+        case 'acidic': propName = 'acidicPercentage'; break;
+        case 'basic': propName = 'basicPercentage'; break;
+        default: propName = metricId;
+      }
+      
+      // Get the metric configuration
+      const metricConfig = COMPARISON_CONFIG.metrics.find(m => m.id === metricId) || {
+        name: metricId.charAt(0).toUpperCase() + metricId.slice(1),
+        format: (value) => value.toFixed(1)
+      };
+      
+      // Extract values, filtering out NaN/null values
+      const knownValues = knownSites.map(site => site[propName]).filter(v => !isNaN(v) && v !== null);
+      const unknownValues = unknownSites.map(site => site[propName]).filter(v => !isNaN(v) && v !== null);
+      
+      // If not enough data, show warning
+      if (knownValues.length < 5 || unknownValues.length < 5) {
+        container.innerHTML = `<div class="alert alert-warning">
+          Not enough data to create box plot for ${metricConfig.name}. Need at least 5 values in each group.
+        </div>`;
+        return;
+      }
+      
+      // Calculate box plot statistics for known sites
+      const knownStats = calculateBoxPlotStats(knownValues);
+      
+      // Calculate box plot statistics for unknown sites
+      const unknownStats = calculateBoxPlotStats(unknownValues);
+      
+      // Create canvas for the chart
+      container.innerHTML = '';
+      const canvas = document.createElement('canvas');
+      container.appendChild(canvas);
+      
+      // Create a standard bar chart instead of rangeBar (which requires a plugin)
+      new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: ['Known Min', 'Known Q1', 'Known Median', 'Known Q3', 'Known Max', 
+                  'Unknown Min', 'Unknown Q1', 'Unknown Median', 'Unknown Q3', 'Unknown Max'],
+          datasets: [{
+            label: metricConfig.name,
             data: [
-              { x: 'Known Sites', y: knownStats.min, y1: knownStats.max },
-              { x: 'Unknown Sites', y: unknownStats.min, y1: unknownStats.max }
+              knownStats.min, knownStats.q1, knownStats.median, knownStats.q3, knownStats.max,
+              unknownStats.min, unknownStats.q1, unknownStats.median, unknownStats.q3, unknownStats.max
             ],
-            backgroundColor: 'rgba(0, 0, 0, 0)',
-            borderColor: '#666',
-            borderWidth: 1,
-            barPercentage: 0.15,
-            type: 'rangeBar'
-          },
-          // Q1 to Q3 boxes
-          {
-            label: 'Interquartile Range',
-            data: [
-              { x: 'Known Sites', y: knownStats.q1, y1: knownStats.q3 },
-              { x: 'Unknown Sites', y: unknownStats.q1, y1: unknownStats.q3 }
+            backgroundColor: [
+              'rgba(25, 118, 210, 0.3)', 'rgba(25, 118, 210, 0.5)', 'rgba(25, 118, 210, 0.9)', 'rgba(25, 118, 210, 0.5)', 'rgba(25, 118, 210, 0.3)',
+              'rgba(255, 152, 0, 0.3)', 'rgba(255, 152, 0, 0.5)', 'rgba(255, 152, 0, 0.9)', 'rgba(255, 152, 0, 0.5)', 'rgba(255, 152, 0, 0.3)'
             ],
-            backgroundColor: [COMPARISON_CONFIG.colors.known, COMPARISON_CONFIG.colors.unknown],
-            borderColor: '#333',
-            borderWidth: 1,
-            barPercentage: 0.4,
-            type: 'rangeBar'
-          },
-          // Median lines
-          {
-            label: 'Median',
-            data: [
-              { x: 'Known Sites', y: knownStats.median, y1: knownStats.median },
-              { x: 'Unknown Sites', y: unknownStats.median, y1: unknownStats.median }
-            ],
-            backgroundColor: '#000',
-            borderColor: '#000',
-            borderWidth: 2,
-            barPercentage: 0.5,
-            type: 'rangeBar'
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          title: {
-            display: true,
-            text: `Box Plot: ${metricConfig.name}`,
-            font: {
-              size: 16
-            }
-          },
-          legend: {
-            display: false
-          },
-          tooltip: {
-            callbacks: {
-              label: function(context) {
-                const datasetIndex = context.datasetIndex;
-                const dataIndex = context.dataIndex;
-                
-                if (datasetIndex === 0) { // Min/Max
-                  const min = context.dataset.data[dataIndex].y;
-                  const max = context.dataset.data[dataIndex].y1;
-                  return [
-                    `Min: ${metricConfig.format(min)}`,
-                    `Max: ${metricConfig.format(max)}`
-                  ];
-                } else if (datasetIndex === 1) { // IQR
-                  const q1 = context.dataset.data[dataIndex].y;
-                  const q3 = context.dataset.data[dataIndex].y1;
-                  return [
-                    `Q1 (25%): ${metricConfig.format(q1)}`,
-                    `Q3 (75%): ${metricConfig.format(q3)}`
-                  ];
-                } else { // Median
-                  const median = context.dataset.data[dataIndex].y;
-                  return `Median: ${metricConfig.format(median)}`;
+            borderColor: 'rgba(0, 0, 0, 0.2)',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            title: {
+              display: true,
+              text: `Distribution: ${metricConfig.name}`,
+              font: {
+                size: 16
+              },
+              padding: {
+                top: 10,
+                bottom: 20
+              }
+            },
+            legend: {
+              display: false
+            },
+            tooltip: {
+              callbacks: {
+                title: function(context) {
+                  return context[0].label;
+                },
+                label: function(context) {
+                  return `${metricConfig.format(context.raw)}`;
                 }
               }
             }
-          }
-        },
-        scales: {
-          y: {
-            beginAtZero: metricId !== 'plddt' && metricId !== 'site_plddt',
-            title: {
-              display: true,
-              text: metricConfig.name
+          },
+          scales: {
+            y: {
+              beginAtZero: metricId !== 'plddt' && metricId !== 'site_plddt',
+              title: {
+                display: true,
+                text: metricConfig.name,
+                padding: {
+                  bottom: 10
+                }
+              },
+              ticks: {
+                padding: 5
+              }
+            },
+            x: {
+              title: {
+                display: true, 
+                text: 'Distribution Statistics',
+                padding: {
+                  top: 15
+                }
+              },
+              ticks: {
+                maxRotation: 45,
+                minRotation: 45,
+                padding: 5
+              }
+            }
+          },
+          layout: {
+            padding: {
+              left: 10,
+              right: 10,
+              top: 0,
+              bottom: 10
             }
           }
         }
-      }
-    });
-    
-    // Add description below the chart
-    const descriptionDiv = document.createElement('div');
-    descriptionDiv.className = 'text-muted mt-2 small';
-    descriptionDiv.innerHTML = `
-      <p><strong>Box Plot:</strong> ${metricConfig.description}</p>
-      <p><strong>Known Sites:</strong> Median = ${metricConfig.format(knownStats.median)}, 
-         IQR = ${metricConfig.format(knownStats.q1)} - ${metricConfig.format(knownStats.q3)}</p>
-      <p><strong>Unknown Sites:</strong> Median = ${metricConfig.format(unknownStats.median)}, 
-         IQR = ${metricConfig.format(unknownStats.q1)} - ${metricConfig.format(unknownStats.q3)}</p>
-    `;
-    container.appendChild(descriptionDiv);
+      })
+      
+      
   }
   
   /**
    * Check if Chart.js is loaded and load it if necessary
    * @param {Function} callback - Function to call when Chart.js is loaded
    */
-  // Check if Chart.js is loaded and load it if necessary
-function ensureChartJsLoaded(callback) {
+  function ensureChartJsLoaded(callback) {
     if (typeof Chart !== 'undefined') {
       // Chart.js is already loaded
       if (callback) callback();
@@ -961,9 +1032,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const max = Math.max(...allValues);
     const range = max - min;
     
-    // Determine number of bins - between 6 and 12 depending on data size
+    // Determine number of bins - between 6 and 10 depending on data size (reduced from 12 for better spacing)
     const minBins = 6;
-    const maxBins = 12;
+    const maxBins = 10;
     const dataSize = allValues.length;
     const binCount = Math.min(maxBins, Math.max(minBins, Math.floor(Math.sqrt(dataSize))));
     
@@ -1000,7 +1071,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const canvas = document.createElement('canvas');
     container.appendChild(canvas);
     
-    // Create the histogram
+    // Create the histogram with improved formatting for better readability
     new Chart(canvas, {
       type: 'bar',
       data: {
@@ -1031,10 +1102,19 @@ document.addEventListener('DOMContentLoaded', function() {
             text: `Distribution: ${metricConfig.name}`,
             font: {
               size: 16
+            },
+            padding: {
+              top: 10,
+              bottom: 20
             }
           },
           legend: {
-            position: 'bottom'
+            position: 'bottom',
+            labels: {
+              padding: 15,
+              boxWidth: 12,
+              boxHeight: 12
+            }
           },
           tooltip: {
             callbacks: {
@@ -1063,14 +1143,38 @@ document.addEventListener('DOMContentLoaded', function() {
             beginAtZero: true,
             title: {
               display: true,
-              text: 'Percentage (%)'
+              text: 'Percentage (%)',
+              padding: {
+                bottom: 10
+              }
+            },
+            ticks: {
+              padding: 5
             }
           },
           x: {
             title: {
               display: true,
-              text: metricConfig.name
+              text: metricConfig.name,
+              padding: {
+                top: 15
+              }
+            },
+            ticks: {
+              maxRotation: 45,
+              minRotation: 45,
+              padding: 5,
+              autoSkip: true,
+              maxTicksLimit: 8  // Limit the number of ticks to prevent overcrowding
             }
+          }
+        },
+        layout: {
+          padding: {
+            left: 10,
+            right: 10,
+            top: 0,
+            bottom: 30
           }
         }
       }
@@ -1113,7 +1217,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const canvas = document.createElement('canvas');
     container.appendChild(canvas);
     
-    // Create the comparison chart
+    // Create the comparison chart with improved spacing and readability
     new Chart(canvas, {
       type: 'bar',
       data: {
@@ -1144,10 +1248,19 @@ document.addEventListener('DOMContentLoaded', function() {
             text: 'Site Type Distribution Comparison',
             font: {
               size: 16
+            },
+            padding: {
+              top: 10, 
+              bottom: 20
             }
           },
           legend: {
-            position: 'bottom'
+            position: 'bottom',
+            labels: {
+              padding: 15,
+              boxWidth: 12,
+              boxHeight: 12
+            }
           },
           tooltip: {
             callbacks: {
@@ -1178,8 +1291,34 @@ document.addEventListener('DOMContentLoaded', function() {
             beginAtZero: true,
             title: {
               display: true,
-              text: 'Percentage (%)'
+              text: 'Percentage (%)',
+              padding: {
+                bottom: 10
+              }
+            },
+            ticks: {
+              padding: 5
             }
+          },
+          x: {
+            title: {
+              display: true,
+              text: 'Amino Acid Type',
+              padding: {
+                top: 15
+              }
+            },
+            ticks: {
+              padding: 5
+            }
+          }
+        },
+        layout: {
+          padding: {
+            left: 10,
+            right: 10,
+            top: 0,
+            bottom: 20
           }
         }
       }
@@ -1236,7 +1375,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const canvas = document.createElement('canvas');
     container.appendChild(canvas);
     
-    // Create the scatter plot
+    // Create the scatter plot with improved spacing and readability
     new Chart(canvas, {
       type: 'scatter',
       data: {
@@ -1276,10 +1415,19 @@ document.addEventListener('DOMContentLoaded', function() {
             text: 'pLDDT Score vs Surface Accessibility',
             font: {
               size: 16
+            },
+            padding: {
+              top: 10,
+              bottom: 20
             }
           },
           legend: {
-            position: 'bottom'
+            position: 'bottom',
+            labels: {
+              padding: 15,
+              boxWidth: 12,
+              boxHeight: 12
+            }
           },
           tooltip: {
             callbacks: {
@@ -1310,22 +1458,42 @@ document.addEventListener('DOMContentLoaded', function() {
           y: {
             title: {
               display: true,
-              text: 'Surface Accessibility (%)'
+              text: 'Surface Accessibility (%)',
+              padding: {
+                bottom: 10
+              }
+            },
+            ticks: {
+              padding: 5
             }
           },
           x: {
             title: {
               display: true,
-              text: 'pLDDT Score'
+              text: 'pLDDT Score',
+              padding: {
+                top: 10
+              }
+            },
+            ticks: {
+              padding: 5
             }
+          }
+        },
+        layout: {
+          padding: {
+            left: 10,
+            right: 10,
+            top: 0,
+            bottom: 30
           }
         }
       }
     });
     
-    // Add legend for site types
+    // Add legend for site types with improved spacing
     const legendDiv = document.createElement('div');
-    legendDiv.className = 'd-flex justify-content-center mt-3';
+    legendDiv.className = 'd-flex justify-content-center mt-4 mb-2';
     legendDiv.innerHTML = `
       <div class="d-flex align-items-center me-4">
         <div style="width: 12px; height: 12px; background-color: ${siteTypeColors['S']}; border-radius: 50%; margin-right: 5px;"></div>
@@ -1342,9 +1510,9 @@ document.addEventListener('DOMContentLoaded', function() {
     `;
     container.appendChild(legendDiv);
     
-    // Add description
+    // Add description with improved spacing
     const descriptionDiv = document.createElement('div');
-    descriptionDiv.className = 'text-muted mt-2 small';
+    descriptionDiv.className = 'text-muted mt-3 small p-2';
     descriptionDiv.innerHTML = `
       <p>This scatter plot shows the relationship between structure quality (pLDDT score) 
       and surface accessibility for known vs unknown phosphorylation sites. Known functional sites 
