@@ -77,8 +77,19 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
         site_type = site.get('siteType', site.get('site', '')[0])
         resno = site.get('resno', 0)
         nearby_count = site.get('nearbyCount', site.get('nearby_count', 0))
-        is_known = site.get('isKnown', site.get('is_known', False))
         motif = site.get('motif', '')
+        
+        # Get is_known directly from the site object
+        is_known = site.get('is_known', False)
+        
+        # Get the StructuralSimAvailable directly from the site object
+        has_structural_data = site.get('StructuralSimAvailable', False)
+        
+        # Set row style based on structural data availability
+        if has_structural_data:
+            row_style = 'style="background-color: #c8e6c9;"'  # Green
+        else:
+            row_style = 'style="background-color: #ffcc80;"'  # Orange
         
         # Get mean pLDDT - handle string values properly
         try:
@@ -130,16 +141,6 @@ def enhance_phosphosite_table(phosphosites, protein_uniprot_id):
             hydrophobicity_score = float(site.get('hydrophobicityScore', 0))
         except (ValueError, TypeError):
             hydrophobicity_score = 0
-        
-        # NEW: Determine if the site has complete structural analysis
-        site_id = f"{protein_uniprot_id}_{resno}"
-        supp_data = get_phosphosite_data(site_id)
-        if supp_data is not None:
-            # Site is analyzed: color green (e.g., light green)
-            row_style = 'style="background-color: #c8e6c9;"'
-        else:
-            # Site not analyzed: color orange
-            row_style = 'style="background-color: #ffcc80;"'
 
         # Continue building the data attributes string
         data_attrs = f"""

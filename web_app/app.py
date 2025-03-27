@@ -271,39 +271,142 @@ def protein(identifier):
                         sequence=sequence
                     )
                     
-                    # Get phosphorylation sites from database or fallback to analysis
-                    print(f"DEBUG: Getting phosphosites for {protein_data['uniprot_id']}")
-                    try:
-                        # First try to get phosphosites from the database
-                        phosphosites = get_all_phosphosites(protein_data['uniprot_id'])
-                        print(f"DEBUG: Found {len(phosphosites)} potential phosphorylation sites")
+                    # Process phosphorylation sites - NEW APPROACH
+                    if sequence:
+                        print(f"DEBUG: Processing all potential phosphorylation sites from sequence")
                         
-                        if not phosphosites:
-                            # If database returned no results, fall back to analysis
-                            print(f"DEBUG: No phosphosites found in database, analyzing from structure...")
-                            phosphosites = analyze_phosphosites(
-                                sequence, structure, uniprot_id=protein_data.get('uniprot_id')
-                            )
-                            print(f"DEBUG: Found {len(phosphosites)} sites via direct analysis")
-                        
-                        # Create enhanced table for visualization
-                        from protein_explorer.analysis.enhanced_table import enhance_phosphosite_table
-                        phosphosite_html = enhance_phosphosite_table(phosphosites, protein_data['uniprot_id'])
+                        # Helper function to extract motif
+                        def extract_motif(sequence, center_pos, window_size):
+                            """Extract a motif of size 2*window_size+1 around center_pos."""
+                            start = max(0, center_pos - window_size)
+                            end = min(len(sequence), center_pos + window_size + 1)
                             
-                    except Exception as e:
-                        print(f"DEBUG: Error getting phosphosites: {e}")
-                        import traceback
-                        print(traceback.format_exc())
+                            # Pad with X if needed
+                            prefix = 'X' * max(0, window_size - center_pos)
+                            suffix = 'X' * max(0, window_size - (len(sequence) - center_pos - 1))
+                            
+                            return prefix + sequence[start:end] + suffix
                         
-                        # Final fallback using basic analysis
-                        phosphosites = analyze_phosphosites(
-                            sequence, structure, uniprot_id=protein_data.get('uniprot_id')
-                        )
+                        # Find all potential STY sites in the sequence
+                        all_phosphosites = []
+                        for i, aa in enumerate(sequence):
+                            if aa in ['S', 'T', 'Y']:
+                                resno = i + 1  # 1-based residue numbering
+                                all_phosphosites.append({
+                                    'site': f"{aa}{resno}",
+                                    'resno': resno,
+                                    'siteType': aa,
+                                    'motif': extract_motif(sequence, i, 7),  # Extract motif around the site
+                                    'mean_plddt': 0,
+                                    'site_plddt': 0,
+                                    'nearby_count': 0,
+                                    'surface_accessibility': 0,
+                                    'is_known': False,  # Default to not known
+                                    'StructuralSimAvailable': False  # Default to no structural data
+                                })
                         
-                        # Use the enhanced table function even with basic data
+                        print(f"DEBUG: Found {len(all_phosphosites)} potential STY sites in the sequence")
+                        
+                        # Get known phosphosites from the database
+                        try:
+                            known_phosphosites = get_all_phosphosites(protein_data['uniprot_id'])
+                            print(f"DEBUG: Retrieved {len(known_phosphosites)} known phosphosites from database")
+                            
+                            # Create a lookup dictionary for known sites
+                            # Create a lookup dictionary for known sites
+                            known_site_lookup = {}
+                            for site in known_phosphosites:
+                                if 'site' in site:
+                                    site_key = site['site']
+                                    known_site_lookup[site_key] = site
+
+                                    # Print the first few raw site entries for debugging
+                                    if len(known_site_lookup) <= 5:
+                                        print(f"DEBUG: Raw DB entry for {site_key}:")
+                                        for key, value in site.items():
+                                            if key != 'full_data':  # Skip full_data to avoid huge output
+                                                print(f"    {key}: {value}")
+
+                            # Merge the information
+                            for site in all_phosphosites:
+                                site_key = site['site']
+                                if site_key in known_site_lookup:
+                                    # Update with known site data
+                                    known_site = known_site_lookup[site_key]
+                                    
+                                    # Copy relevant fields
+                                    for field in ['motif', 'mean_plddt', 'site_plddt', 'nearby_count', 
+                                                'surface_accessibility']:
+                                        if field in known_site and known_site[field] is not None:
+                                            site[field] = known_site[field]
+                                    
+                                    # Explicitly set is_known based on is_known_phosphosite field
+                                    if 'is_known_phosphosite' in known_site:
+                                        # Convert to integer and then to boolean (0 becomes False, any other number becomes True)
+                                        try:
+                                            is_known_val = int(known_site['is_known_phosphosite'])
+                                            site['is_known'] = bool(is_known_val)
+                                            print(f"DEBUG: Setting is_known={site['is_known']} for {site_key}, raw value was {known_site['is_known_phosphosite']}")
+                                        except (ValueError, TypeError):
+                                            # If it can't be converted to int, use the bool() conversion
+                                            site['is_known'] = bool(known_site['is_known_phosphosite'])
+                                            print(f"DEBUG: Setting is_known={site['is_known']} for {site_key}, using bool conversion on {known_site['is_known_phosphosite']}")
+                                    else:
+                                        # If site is in known_site_lookup but no is_known_phosphosite field,
+                                        # we'll assume it's known (since it's in the phosphosite table)
+                                        site['is_known'] = True
+                                        print(f"DEBUG: Setting is_known=True for {site_key} (no is_known_phosphosite field)")
+                                            
+                                    # Explicitly handle StructuralSimAvailable field
+                                    if 'StructuralSimAvailable' in known_site:
+                                        # Convert to integer and then to boolean
+                                        try:
+                                            struct_sim_val = int(known_site['StructuralSimAvailable'])
+                                            site['StructuralSimAvailable'] = bool(struct_sim_val)
+                                            print(f"DEBUG: Setting StructuralSimAvailable={site['StructuralSimAvailable']} for {site_key}, raw value was {known_site['StructuralSimAvailable']}")
+                                        except (ValueError, TypeError):
+                                            # If it can't be converted to int, use the bool() conversion
+                                            site['StructuralSimAvailable'] = bool(known_site['StructuralSimAvailable'])
+                                            print(f"DEBUG: Setting StructuralSimAvailable={site['StructuralSimAvailable']} for {site_key}, using bool conversion on {known_site['StructuralSimAvailable']}")
+                                    else:
+                                        # Default to False if field is missing
+                                        site['StructuralSimAvailable'] = False
+                                        print(f"DEBUG: Setting StructuralSimAvailable=False for {site_key} (field missing)")
+
+                            # Print the first few sites to verify the merge
+                            for i, site in enumerate(all_phosphosites[:10]):
+                                print(f"DEBUG: Site {i+1}: {site['site']}, is_known={site['is_known']}, StructuralSimAvailable={site.get('StructuralSimAvailable', False)}")
+                                
+                        except Exception as e:
+                            print(f"DEBUG: Error getting known phosphosites: {e}")
+                            import traceback
+                            print(traceback.format_exc())
+                            
+                            # If database query fails, use basic analysis
+                            try:
+                                # As a fallback, analyze structure to get pLDDT and nearby counts
+                                analyzed_sites = analyze_phosphosites(sequence, structure, uniprot_id=protein_data.get('uniprot_id'))
+                                
+                                # Create a lookup for the analyzed sites
+                                analyzed_lookup = {site['site']: site for site in analyzed_sites if 'site' in site}
+                                
+                                # Merge with all_phosphosites
+                                for site in all_phosphosites:
+                                    site_key = site['site']
+                                    if site_key in analyzed_lookup:
+                                        analyzed_site = analyzed_lookup[site_key]
+                                        # Copy relevant fields
+                                        for field in ['mean_plddt', 'nearby_count', 'motif', 'is_known']:
+                                            if field in analyzed_site and analyzed_site[field] is not None:
+                                                site[field] = analyzed_site[field]
+                            except Exception as fallback_e:
+                                print(f"DEBUG: Error in fallback analysis: {fallback_e}")
+                        
+                        # Create enhanced table visualization using the merged data
                         try:
                             from protein_explorer.analysis.enhanced_table import enhance_phosphosite_table
-                            phosphosite_html = enhance_phosphosite_table(phosphosites, protein_data['uniprot_id'])
+                            phosphosite_html = enhance_phosphosite_table(all_phosphosites, protein_data['uniprot_id'])
+                            phosphosites = all_phosphosites  # Store for template access
                         except Exception as e2:
                             print(f"DEBUG: Error using enhanced table: {e2}")
                             # Fall back to original HTML generation if enhanced_table fails
@@ -328,7 +431,7 @@ def protein(identifier):
                                             <tbody id="phosphosite-table">
                             """
                             
-                            for site in phosphosites:
+                            for site in all_phosphosites:  # Use all_phosphosites to include all STY sites
                                 # Add data attributes to the row for better visualization
                                 data_attrs = f'''
                                     data-site="{site['site']}" 
@@ -342,9 +445,9 @@ def protein(identifier):
                                 phosphosite_html += f"""
                                 <tr {data_attrs}>
                                     <td><a href="/site/{protein_data['uniprot_id']}/{site['site']}" class="site-link" data-resno="{site['resno']}">{site['site']}</a></td>
-                                    <td><code class="motif-sequence">{site['motif']}</code></td>
-                                    <td>{site['mean_plddt']}</td>
-                                    <td>{site['nearby_count']}</td>
+                                    <td><code class="motif-sequence">{site.get('motif', '')}</code></td>
+                                    <td>{site.get('mean_plddt', 'N/A')}</td>
+                                    <td>{site.get('nearby_count', 'N/A')}</td>
                                     <td>{"Yes" if site.get('is_known', False) else "No"}</td>
                                 </tr>
                                 """
@@ -375,6 +478,9 @@ def protein(identifier):
                                 });
                             </script>
                             """
+                    else:
+                        print(f"DEBUG: No sequence available for phosphosite analysis")
+                        phosphosite_html = "<div class='alert alert-warning'>No protein sequence available for phosphosite analysis.</div>"
             except Exception as e:
                 print(f"DEBUG: Error getting structure: {e}")
                 structure_html = f'<div class="alert alert-danger">Error loading structure: {str(e)}</div>'

@@ -362,11 +362,13 @@ def get_all_phosphosites(uniprot_id: str) -> List[Dict]:
                         'site_plddt': site_data.get('site_plddt'),
                         'nearby_count': site_data.get('nearby_count'),
                         'surface_accessibility': site_data.get('surface_accessibility'),
-                        'is_known_phosphosite': site_data.get('is_known_phosphosite', 1),
+                        'is_known_phosphosite': int(site_data.get('is_known_phosphosite', 0)), 
+                        'StructuralSimAvailable': int(site_data.get('StructuralSimAvailable', 0)),  # Add this line
                         'polar_aa_percent': site_data.get('polar_aa_percent'),
                         'nonpolar_aa_percent': site_data.get('nonpolar_aa_percent'),
                         'acidic_aa_percent': site_data.get('acidic_aa_percent'),
                         'basic_aa_percent': site_data.get('basic_aa_percent'),
+                        'num_pubs': site_data.get('MS_LIT'),
                         'full_data': site_data  # Include all original data
                     }
                     sites.append(site_entry)
