@@ -8,3 +8,4 @@ from protein_explorer import data
 from protein_explorer import navigation
 from protein_explorer import analysis
 from protein_explorer import visualization
+from protein_explorer import db

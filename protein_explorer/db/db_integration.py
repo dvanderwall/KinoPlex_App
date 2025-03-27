@@ -57,19 +57,21 @@ try:
     )
     
     FILE_FUNCTIONS_AVAILABLE = True
-except ImportError:
+except ImportError as e:
+    import traceback
+    print(f"Error importing file-based functions: {e}")
+    print(traceback.format_exc())
     logger.warning("Original file-based functions not found, database functions will be used exclusively")
     FILE_FUNCTIONS_AVAILABLE = False
 
 # Import database functions - this will fail if the module is not installed yet
 try:
-    from protein_explorer.db.cloud_sql_connector import (
+    # Use relative import to avoid circular dependency issues
+    from .cloud_sql_connector import (
         get_db_engine,
         execute_query,
         cache_result,
         clear_cache,
-        get_structural_matches as db_get_structural_matches,
-        get_sequence_matches as db_get_sequence_matches,
         get_phosphosite_data as db_get_phosphosite_data,
         get_kinase_scores as db_get_kinase_scores,
         get_all_phosphosites as db_get_all_phosphosites,
@@ -78,9 +80,27 @@ try:
         get_heatmap_data as db_get_heatmap_data,
         health_check
     )
+    
+    # These functions might not exist in cloud_sql_connector.py,
+    # so import them conditionally
+    try:
+        from .cloud_sql_connector import get_structural_matches as db_get_structural_matches
+    except ImportError:
+        db_get_structural_matches = None
+        
+    try:
+        from .cloud_sql_connector import get_sequence_matches as db_get_sequence_matches
+    except ImportError:
+        db_get_sequence_matches = None
+        
     DB_FUNCTIONS_AVAILABLE = True
-except ImportError:
-    logger.warning("Database connector module not found, falling back to file-based functions")
+    print("Successfully imported database functions")
+except ImportError as e:
+    import traceback
+    print(f"Failed to import cloud_sql_connector: {e}")
+    print(traceback.format_exc())
+    logger.warning(f"Database connector module not found: {e}")
+    logger.warning("Falling back to file-based functions")
     DB_FUNCTIONS_AVAILABLE = False
     # Force USE_DATABASE to False if database functions are not available
     USE_DATABASE = False
@@ -89,8 +109,12 @@ except ImportError:
 try:
     from protein_explorer.data.scaffold import get_protein_by_id, get_alphafold_structure
     from protein_explorer.analysis.phospho import analyze_phosphosites
-except ImportError:
+except ImportError as e:
+    import traceback
+    print(f"Error importing essential modules: {e}")
+    print(traceback.format_exc())
     logger.warning("Could not import essential KinoPlex modules")
+
 
 # Integration functions
 
@@ -1194,8 +1218,11 @@ def check_database_health() -> Dict:
         health_status = health_check()
         return health_status
     except Exception as e:
+        import traceback
+        logger.error(f"Database health check failed with exception: {e}")
+        logger.error(traceback.format_exc())
         return {
             'status': 'error',
-            'message': str(e),
+            'error': str(e),
             'timestamp': pd.Timestamp.now().isoformat()
         }

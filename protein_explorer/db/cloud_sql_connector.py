@@ -32,7 +32,7 @@ class DBConfig:
     """Database configuration for Cloud SQL."""
     INSTANCE_CONNECTION_NAME = os.environ.get('CLOUD_SQL_CONNECTION_NAME', 'future-alcove-454817-e6:us-east4:kinoplex-db')
     DB_USER = os.environ.get('DB_USER', 'root')  # Replace with your database user if not root
-    DB_PASS = os.environ.get('DB_PASS', '')  # Replace with your actual password
+    DB_PASS = os.environ.get('DB_PASS', '@Bismark6')  # Replace with your actual password
     DB_NAME = os.environ.get('DB_NAME', 'kinoplex-db')  # This should be the database name, not instance name
     DB_HOST = os.environ.get('DB_HOST', '35.245.113.195')  # Use the public IP for direct connections
     DB_PORT = os.environ.get('DB_PORT', '3306')
@@ -58,23 +58,32 @@ def get_db_engine():
     if _db_engine is not None:
         return _db_engine
     
+    # Check if running on Windows (which doesn't support Unix sockets)
+    import platform
+    import urllib.parse
+    is_windows = platform.system() == 'Windows'
+    
+    # URL-encode the username and password to handle special characters
+    encoded_user = urllib.parse.quote_plus(DBConfig.DB_USER)
+    encoded_pass = urllib.parse.quote_plus(DBConfig.DB_PASS)  # This will encode @ as %40
+    
     # Build connection string based on environment (Cloud SQL vs direct)
-    if DBConfig.INSTANCE_CONNECTION_NAME:
-        # Running on App Engine or other Google Cloud service
+    if DBConfig.INSTANCE_CONNECTION_NAME and not is_windows:
+        # Running on App Engine or other Google Cloud service (non-Windows)
         logger.info(f"Connecting to Cloud SQL instance: {DBConfig.INSTANCE_CONNECTION_NAME}")
         
-        # Use Unix socket if on Google Cloud
+        # Use Unix socket if on Google Cloud with encoded credentials
         connection_string = (
-            f"mysql+pymysql://{DBConfig.DB_USER}:{DBConfig.DB_PASS}@/{DBConfig.DB_NAME}"
+            f"mysql+pymysql://{encoded_user}:{encoded_pass}@/{DBConfig.DB_NAME}"
             f"?unix_socket=/cloudsql/{DBConfig.INSTANCE_CONNECTION_NAME}"
         )
     else:
-        # Running locally or elsewhere with direct connection
+        # Running locally, on Windows, or elsewhere with direct connection
         logger.info(f"Connecting to MySQL database at: {DBConfig.DB_HOST}:{DBConfig.DB_PORT}")
         
-        # Use TCP connection
+        # Use TCP connection with properly encoded credentials
         connection_string = (
-            f"mysql+pymysql://{DBConfig.DB_USER}:{DBConfig.DB_PASS}@{DBConfig.DB_HOST}:{DBConfig.DB_PORT}/{DBConfig.DB_NAME}"
+            f"mysql+pymysql://{encoded_user}:{encoded_pass}@{DBConfig.DB_HOST}:{DBConfig.DB_PORT}/{DBConfig.DB_NAME}"
         )
         
         # Add SSL if configured
@@ -87,16 +96,31 @@ def get_db_engine():
             connection_string += '?' + '&'.join([f"{k}={v}" for k, v in ssl_args.items()])
     
     # Create the SQLAlchemy engine with connection pooling
-    _db_engine = create_engine(
-        connection_string,
-        poolclass=QueuePool,
-        pool_size=DBConfig.POOL_SIZE,
-        max_overflow=DBConfig.MAX_OVERFLOW,
-        pool_timeout=DBConfig.POOL_TIMEOUT,
-        pool_recycle=DBConfig.POOL_RECYCLE
-    )
-    
-    return _db_engine
+    try:
+        # Log the connection string with password masked for security
+        masked_connection = connection_string.replace(encoded_pass, "********")
+        logger.info(f"Creating database engine with connection string: {masked_connection}")
+        
+        _db_engine = create_engine(
+            connection_string,
+            poolclass=QueuePool,
+            pool_size=DBConfig.POOL_SIZE,
+            max_overflow=DBConfig.MAX_OVERFLOW,
+            pool_timeout=DBConfig.POOL_TIMEOUT,
+            pool_recycle=DBConfig.POOL_RECYCLE
+        )
+        
+        # Test the connection
+        with _db_engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            logger.info("Database connection test successful")
+            
+        return _db_engine
+    except Exception as e:
+        import traceback
+        logger.error(f"Error creating database engine: {e}")
+        logger.error(traceback.format_exc())
+        raise
 
 def cache_result(ttl=DEFAULT_CACHE_TTL):
     """

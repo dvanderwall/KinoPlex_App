@@ -15,60 +15,29 @@ import re
 import json
 from typing import Dict, List, Optional
 import shutil
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Add the parent directory to the path to import protein_explorer
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import protein_explorer as pe
 
+# Import essential modules from protein_explorer
 from protein_explorer.data.scaffold import (
     get_uniprot_id_from_gene,
-    get_protein_by_id
+    get_protein_by_id,
+    get_alphafold_structure
 )
 
-# Import phosphosite analysis functions
-from protein_explorer.analysis.phospho import analyze_phosphosites
-from protein_explorer.analysis.phospho_analyzer import (
-    preload_structural_data, 
-    get_phosphosite_data,
-    enhance_phosphosite, 
-    enhance_structural_matches,
-    find_structural_matches, 
-    analyze_phosphosite_context,
-    enhance_site_visualization, 
-    create_comparative_motif_visualization,
-    analyze_residue_distributions
-)
+# Database configuration - add before other imports to ensure proper initialization
+USE_DATABASE = os.environ.get('USE_DATABASE', 'True').lower() in ('true', '1', 't', 'yes')
 
-# Import visualization functions
-from protein_explorer.visualization.network import create_phosphosite_network
-
-from protein_explorer.analysis.sequence_analyzer import (
-    preload_sequence_data,
-    find_sequence_matches,
-    analyze_motif_conservation,
-    create_sequence_network_data,
-    get_motif_enrichment,
-    create_sequence_motif_visualization
-)
-
-from protein_explorer.analysis.kinase_predictor import (
-    load_kinase_scores, 
-    get_site_kinase_scores,
-    predict_kinases,
-    get_heatmap_data,
-    get_kinase_comparison_data,
-    get_known_kinase_info,
-    categorize_kinases_by_family
-)
-
-# Import the new network-based functions
-from protein_explorer.analysis.network_kinase_predictor import (
-    get_similar_sites, compute_aggregated_kinase_scores, predict_kinases_network,
-    get_network_heatmap_data, get_network_kinase_comparison, 
-    get_kinase_family_distribution_network
-)
-
-
-from protein_explorer.db_integration import (
+# Import database integration module
+from protein_explorer.db.db_integration import (
+    use_database,
+    check_database_health,
     find_structural_matches,
     get_phosphosite_data,
     enhance_phosphosite,
@@ -84,26 +53,56 @@ from protein_explorer.db_integration import (
     get_network_kinase_comparison,
     get_known_kinase_info,
     categorize_kinases_by_family,
-    analyze_motif_conservation,
-    use_database,
-    check_database_health
+    analyze_motif_conservation
 )
 
-# Database configuration - add after existing import statements
-import os
-USE_DATABASE = os.environ.get('USE_DATABASE', 'True').lower() in ('true', '1', 't', 'yes')
+# Enable database mode if configured
 if USE_DATABASE:
     use_database(True)
     logger.info("Database mode enabled")
 else:
     logger.info("File-based mode enabled")
 
-# Add a database health check on startup
+# Import other modules after database configuration
+from protein_explorer.analysis.phospho import analyze_phosphosites
+from protein_explorer.analysis.phospho_analyzer import (
+    preload_structural_data, 
+    get_phosphosites,
+    analyze_phosphosite_context,
+    enhance_site_visualization, 
+    create_comparative_motif_visualization,
+    analyze_residue_distributions
+)
+
+# Import visualization functions
+from protein_explorer.visualization.network import create_phosphosite_network
+
+from protein_explorer.analysis.sequence_analyzer import (
+    preload_sequence_data,
+    create_sequence_network_data,
+    get_motif_enrichment,
+    create_sequence_motif_visualization
+)
+
+from protein_explorer.analysis.kinase_predictor import (
+    load_kinase_scores
+)
+
+# Import the network-based functions
+from protein_explorer.analysis.network_kinase_predictor import (
+    predict_kinases_network,
+    get_network_heatmap_data, 
+    get_kinase_family_distribution_network
+)
+
+# Perform a database health check on startup
 try:
     if USE_DATABASE:
+        logger.info("Performing database health check...")
         health_status = check_database_health()
+        print("HEALTH STATUS:", health_status)
         if health_status['status'] == 'healthy':
-            logger.info(f"Database connection healthy: {health_status['latency_ms']}ms latency")
+            logger.info(f"Database connection healthy: {health_status.get('latency_ms', 'N/A')}ms latency")
         else:
             logger.warning(f"Database health check failed: {health_status.get('error', 'Unknown error')}")
             logger.warning("Falling back to file-based mode")
@@ -113,41 +112,38 @@ except Exception as e:
     logger.warning("Falling back to file-based mode")
     use_database(False)
 
-
-
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-# Preload structural similarity data at application startup
-try:
-    print("Preloading structural similarity data...")
-    from protein_explorer.analysis.phospho_analyzer import preload_structural_data
-    
-    # Check for feather file first, fall back to parquet
-    feather_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 
-                             'Combined_Kinome_10A_Master_Filtered_2.feather')
-    if os.path.exists(feather_file):
-        preload_structural_data(feather_file)
-    else:
-        parquet_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 
-                                 'Combined_Kinome_10A_Master_Filtered_2.parquet')
-        preload_structural_data(parquet_file)
-    
-    print("Structural similarity data preloaded successfully")
-
-    print("Preloading sequence similarity data...")
-    seq_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 
-                         'Sequence_Similarity_Edges.parquet')
-    preload_sequence_data(seq_file)
-    print("Sequence similarity data preloaded successfully")
-except Exception as e:
-    print(f"Warning: Failed to preload structural similarity data: {e}")
-    print("Data will be loaded on first request (may cause delay)")
-
-"""
-Add this code near the top of app.py, just after the imports and before the Flask app initialization
-"""
+# Conditionally preload data files only if not using database
+if not USE_DATABASE:
+    try:
+        print("Database mode is disabled. Preloading structural similarity data from files...")
+        
+        # Check for feather file first, fall back to parquet
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        parent_dir = os.path.dirname(current_dir)
+        feather_file = os.path.join(parent_dir, 'Combined_Kinome_10A_Master_Filtered_2.feather')
+        if os.path.exists(feather_file):
+            preload_structural_data(feather_file)
+            print(f"Structural similarity data preloaded from: {feather_file}")
+        else:
+            parquet_file = os.path.join(parent_dir, 'Combined_Kinome_10A_Master_Filtered_2.parquet')
+            if os.path.exists(parquet_file):
+                preload_structural_data(parquet_file)
+                print(f"Structural similarity data preloaded from: {parquet_file}")
+            else:
+                print("Warning: Could not find structural data files. Data will be loaded on first request (may cause delay).")
+        
+        print("Preloading sequence similarity data...")
+        seq_file = os.path.join(parent_dir, 'Sequence_Similarity_Edges.parquet')
+        if os.path.exists(seq_file):
+            preload_sequence_data(seq_file)
+            print(f"Sequence similarity data preloaded from: {seq_file}")
+        else:
+            print("Warning: Could not find sequence similarity data file.")
+    except Exception as e:
+        print(f"Warning: Failed to preload data files: {e}")
+        print("Data will be loaded on first request (may cause delay)")
+else:
+    print("Database mode is enabled. Skipping file preloading.")
 
 # Ensure cache directory exists
 def ensure_cache_directory():
@@ -174,7 +170,7 @@ def ensure_cache_directory():
                 print(f"Failed to create alternative cache directory: {e3}")
                 print("Application may have issues with caching")
 
-# Run cache directory initialization
+# Clear and recreate the cache directory
 cache_dir = os.path.expanduser("~/.protein_explorer/cache")
 if os.path.exists(cache_dir):
     shutil.rmtree(cache_dir)
@@ -184,11 +180,7 @@ else:
     print("Cache directory does not exist.")
 ensure_cache_directory()
 
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
+# Initialize Flask app
 app = Flask(__name__)
 
 @app.route('/')
@@ -227,7 +219,7 @@ def protein(identifier):
         # Get protein data
         if id_type.lower() == 'uniprot':
             print(f"DEBUG: Getting protein by UniProt ID")
-            protein_data = pe.data.get_protein_by_id(uniprot_id=identifier)
+            protein_data = get_protein_by_id(uniprot_id=identifier)
         else:
             print(f"DEBUG: Getting protein by gene symbol")
             pre_filt_id = get_uniprot_id_from_gene(identifier)
@@ -239,13 +231,6 @@ def protein(identifier):
         if identifier in ['P04637', 'P53_HUMAN']:
             protein_data['has_structure'] = True
             print(f"DEBUG: Manually set has_structure=True for {identifier}")
-        
-        # Create cache directory if it doesn't exist
-        import os
-        cache_dir = os.path.expanduser("~/.protein_explorer/cache")
-        if not os.path.exists(cache_dir):
-            os.makedirs(cache_dir, exist_ok=True)
-            print(f"DEBUG: Created cache directory: {cache_dir}")
         
         # Check if protein has a structure
         structure_html = None
@@ -268,10 +253,10 @@ def protein(identifier):
                         print(f"DEBUG: Got structure directly, length: {len(structure)}")
                     else:
                         # Fall back to normal method
-                        structure = pe.data.get_alphafold_structure(protein_data['uniprot_id'])
+                        structure = get_alphafold_structure(protein_data['uniprot_id'])
                 else:
                     # Use normal method
-                    structure = pe.data.get_alphafold_structure(protein_data['uniprot_id'])
+                    structure = get_alphafold_structure(protein_data['uniprot_id'])
                 
                 # Get the protein sequence from metadata if available
                 sequence = None
@@ -286,116 +271,110 @@ def protein(identifier):
                         sequence=sequence
                     )
                     
-                    # Analyze phosphorylation sites
-                    if sequence:
-                        print(f"DEBUG: Analyzing phosphorylation sites")
-                        try:
-                            # Use enhanced function that includes supplementary data
-                            from protein_explorer.analysis.phospho_analyzer import get_phosphosites, get_phosphosite_data
-                            phosphosites = get_all_phosphosites(protein_data['uniprot_id'])
-                            print(f"DEBUG: Found {len(phosphosites)} potential phosphorylation sites")
-                            
-                            # Enhance phosphosites with additional metrics for visualization
-                            for site in phosphosites:
-                                if 'resno' in site:
-                                    site_id = f"{protein_data['uniprot_id']}_{site['resno']}"
-                                    supp_data = get_phosphosite_data(site_id)
-                                    
-                                    if supp_data:
-                                        for key in ['surface_accessibility', 'site_plddt', 
-                                                    'polar_aa_percent', 'nonpolar_aa_percent', 
-                                                    'acidic_aa_percent', 'basic_aa_percent']:
-                                            if key in supp_data and supp_data[key] is not None and key not in site:
-                                                site[key] = supp_data[key]
-                            
-                            from protein_explorer.analysis.enhanced_table import enhance_phosphosite_table
-                            phosphosite_html = enhance_phosphosite_table(phosphosites, protein_data['uniprot_id'])
-                            
-                        except Exception as e:
-                            print(f"DEBUG: Error analyzing phosphosites: {e}")
-                            import traceback
-                            print(traceback.format_exc())
-                            
-                            # Fall back to basic analysis without supplementary data
-                            phosphosites = pe.analysis.phospho.analyze_phosphosites(
+                    # Get phosphorylation sites from database or fallback to analysis
+                    print(f"DEBUG: Getting phosphosites for {protein_data['uniprot_id']}")
+                    try:
+                        # First try to get phosphosites from the database
+                        phosphosites = get_all_phosphosites(protein_data['uniprot_id'])
+                        print(f"DEBUG: Found {len(phosphosites)} potential phosphorylation sites")
+                        
+                        if not phosphosites:
+                            # If database returned no results, fall back to analysis
+                            print(f"DEBUG: No phosphosites found in database, analyzing from structure...")
+                            phosphosites = analyze_phosphosites(
                                 sequence, structure, uniprot_id=protein_data.get('uniprot_id')
                             )
+                            print(f"DEBUG: Found {len(phosphosites)} sites via direct analysis")
+                        
+                        # Create enhanced table for visualization
+                        from protein_explorer.analysis.enhanced_table import enhance_phosphosite_table
+                        phosphosite_html = enhance_phosphosite_table(phosphosites, protein_data['uniprot_id'])
                             
-                            # Use the enhanced table function even with basic data
-                            try:
-                                from protein_explorer.analysis.enhanced_table import enhance_phosphosite_table
-                                phosphosite_html = enhance_phosphosite_table(phosphosites, protein_data['uniprot_id'])
-                            except Exception as e2:
-                                print(f"DEBUG: Error using enhanced table: {e2}")
-                                # Fall back to original HTML generation if enhanced_table fails
+                    except Exception as e:
+                        print(f"DEBUG: Error getting phosphosites: {e}")
+                        import traceback
+                        print(traceback.format_exc())
+                        
+                        # Final fallback using basic analysis
+                        phosphosites = analyze_phosphosites(
+                            sequence, structure, uniprot_id=protein_data.get('uniprot_id')
+                        )
+                        
+                        # Use the enhanced table function even with basic data
+                        try:
+                            from protein_explorer.analysis.enhanced_table import enhance_phosphosite_table
+                            phosphosite_html = enhance_phosphosite_table(phosphosites, protein_data['uniprot_id'])
+                        except Exception as e2:
+                            print(f"DEBUG: Error using enhanced table: {e2}")
+                            # Fall back to original HTML generation if enhanced_table fails
+                            
+                            phosphosite_html = f"""
+                            <div class="card mt-4">
+                                <div class="card-header">
+                                    <h5 class="mb-0">Phosphorylation Site Analysis</h5>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div class="table-responsive">
+                                        <table class="table table-striped table-hover phosphosite-table">
+                                            <thead class="thead-light">
+                                                <tr>
+                                                    <th>Site</th>
+                                                    <th>Motif (-7 to +7)</th>
+                                                    <th>Mean pLDDT</th>
+                                                    <th>Nearby Residues (10Å)</th>
+                                                    <th>Known in PhosphositePlus</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="phosphosite-table">
+                            """
+                            
+                            for site in phosphosites:
+                                # Add data attributes to the row for better visualization
+                                data_attrs = f'''
+                                    data-site="{site['site']}" 
+                                    data-resno="{site['resno']}" 
+                                    data-type="{site['site'][0] if 'site' in site else ''}"
+                                    data-plddt="{site.get('mean_plddt', 0)}" 
+                                    data-nearby="{site.get('nearby_count', 0)}"
+                                    data-known="{str(site.get('is_known', False)).lower()}"
+                                '''
                                 
-                                phosphosite_html = f"""
-                                <div class="card mt-4">
-                                    <div class="card-header">
-                                        <h5 class="mb-0">Phosphorylation Site Analysis</h5>
-                                    </div>
-                                    <div class="card-body p-0">
-                                        <div class="table-responsive">
-                                            <table class="table table-striped table-hover phosphosite-table">
-                                                <thead class="thead-light">
-                                                    <tr>
-                                                        <th>Site</th>
-                                                        <th>Motif (-7 to +7)</th>
-                                                        <th>Mean pLDDT</th>
-                                                        <th>Nearby Residues (10Å)</th>
-                                                        <th>Known in PhosphositePlus</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody id="phosphosite-table">
+                                phosphosite_html += f"""
+                                <tr {data_attrs}>
+                                    <td><a href="/site/{protein_data['uniprot_id']}/{site['site']}" class="site-link" data-resno="{site['resno']}">{site['site']}</a></td>
+                                    <td><code class="motif-sequence">{site['motif']}</code></td>
+                                    <td>{site['mean_plddt']}</td>
+                                    <td>{site['nearby_count']}</td>
+                                    <td>{"Yes" if site.get('is_known', False) else "No"}</td>
+                                </tr>
                                 """
-                                
-                                for site in phosphosites:
-                                    # Add data attributes to the row for better visualization
-                                    data_attrs = f'''
-                                        data-site="{site['site']}" 
-                                        data-resno="{site['resno']}" 
-                                        data-type="{site['site'][0] if 'site' in site else ''}"
-                                        data-plddt="{site.get('mean_plddt', 0)}" 
-                                        data-nearby="{site.get('nearby_count', 0)}"
-                                        data-known="{str(site.get('is_known', False)).lower()}"
-                                    '''
-                                    
-                                    phosphosite_html += f"""
-                                    <tr {data_attrs}>
-                                        <td><a href="/site/{protein_data['uniprot_id']}/{site['site']}" class="site-link" data-resno="{site['resno']}">{site['site']}</a></td>
-                                        <td><code class="motif-sequence">{site['motif']}</code></td>
-                                        <td>{site['mean_plddt']}</td>
-                                        <td>{site['nearby_count']}</td>
-                                        <td>{"Yes" if site.get('is_known', False) else "No"}</td>
-                                    </tr>
-                                    """
-                                
-                                phosphosite_html += """
-                                                </tbody>
-                                            </table>
-                                        </div>
+                            
+                            phosphosite_html += """
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
-                                
-                                <script>
-                                    document.addEventListener('DOMContentLoaded', function() {
-                                        const siteLinks = document.querySelectorAll('.site-link');
-                                        siteLinks.forEach(link => {
-                                            link.addEventListener('click', function(e) {
-                                                e.preventDefault();
-                                                const resno = this.getAttribute('data-resno');
-                                                const sequenceSpans = document.querySelectorAll('.sequence-viewer span');
-                                                if (sequenceSpans.length > 0) {
-                                                    const index = parseInt(resno) - 1;
-                                                    if (index >= 0 && index < sequenceSpans.length) {
-                                                        sequenceSpans[index].click();
-                                                    }
+                            </div>
+                            
+                            <script>
+                                document.addEventListener('DOMContentLoaded', function() {
+                                    const siteLinks = document.querySelectorAll('.site-link');
+                                    siteLinks.forEach(link => {
+                                        link.addEventListener('click', function(e) {
+                                            e.preventDefault();
+                                            const resno = this.getAttribute('data-resno');
+                                            const sequenceSpans = document.querySelectorAll('.sequence-viewer span');
+                                            if (sequenceSpans.length > 0) {
+                                                const index = parseInt(resno) - 1;
+                                                if (index >= 0 && index < sequenceSpans.length) {
+                                                    sequenceSpans[index].click();
                                                 }
-                                            });
+                                            }
                                         });
                                     });
-                                </script>
-                                """
+                                });
+                            </script>
+                            """
             except Exception as e:
                 print(f"DEBUG: Error getting structure: {e}")
                 structure_html = f'<div class="alert alert-danger">Error loading structure: {str(e)}</div>'
@@ -501,7 +480,7 @@ def analyze():
                 structures = {}
                 for uniprot_id in protein_list:
                     try:
-                        structure = pe.data.get_alphafold_structure(uniprot_id)
+                        structure = get_alphafold_structure(uniprot_id)
                         if structure:
                             structures[uniprot_id] = structure
                     except Exception as e:
@@ -540,30 +519,30 @@ def analyze():
 
 @app.route('/api/phosphosites/<uniprot_id>', methods=['GET'])
 def api_phosphosites(uniprot_id):
-    """API endpoint for phosphorylation site analysis with supplementary data."""
+    """API endpoint for phosphorylation site analysis."""
     try:
-        # Import our enhanced phosphosite functions
-        from protein_explorer.analysis.phospho_analyzer import get_phosphosites, get_phosphosite_data
-
-        # Get protein data
-        protein_data = pe.data.get_protein_by_id(uniprot_id=uniprot_id)
+        # Get all phosphosites for the protein using integration function
+        phosphosites = get_all_phosphosites(uniprot_id)
         
-        # Get sequence
-        sequence = protein_data.get('metadata', {}).get('sequence', {}).get('value')
-        if not sequence:
-            return jsonify({'error': 'Protein sequence not found'}), 404
+        # If no phosphosites found through DB, try original analysis method
+        if not phosphosites:
+            # Get protein data
+            protein_data = get_protein_by_id(uniprot_id=uniprot_id)
             
-        # Get structure
-        structure = pe.data.get_alphafold_structure(uniprot_id)
-        if not structure:
-            return jsonify({'error': 'Protein structure not found'}), 404
+            # Get sequence
+            sequence = protein_data.get('metadata', {}).get('sequence', {}).get('value')
+            if not sequence:
+                return jsonify({'error': 'Protein sequence not found'}), 404
+                
+            # Get structure
+            structure = get_alphafold_structure(uniprot_id)
+            if not structure:
+                return jsonify({'error': 'Protein structure not found'}), 404
+                
+            # Analyze phosphosites
+            phosphosites = analyze_phosphosites(sequence, structure, uniprot_id)
             
-        # Get phosphosites with enhanced data
-        try:
-            # Use the enhanced function first
-            phosphosites = get_phosphosites(uniprot_id)
-            
-            # Add any additional supplementary data not already included
+            # Enhance with supplementary data
             for site in phosphosites:
                 if 'resno' in site:
                     site_id = f"{uniprot_id}_{site['resno']}"
@@ -571,30 +550,8 @@ def api_phosphosites(uniprot_id):
                     
                     if supp_data:
                         for key, value in supp_data.items():
-                            # Only add fields not already present
                             if key not in site and value is not None:
                                 site[key] = value
-        except Exception as e:
-            # Fall back to basic analysis without supplementary data
-            logger.warning(f"Enhanced phosphosite analysis failed, using basic analysis: {e}")
-            phosphosites = pe.analysis.phospho.analyze_phosphosites(sequence, structure, uniprot_id)
-        
-        # Get structural matches for each site
-        try:
-            from protein_explorer.analysis.phospho_analyzer import find_structural_matches, enhance_structural_matches
-            
-            # For each site, find and enhance matches
-            for site in phosphosites:
-                site_matches = find_structural_matches(uniprot_id, [site], top_n=10)
-                if site['site'] in site_matches:
-                    raw_matches = site_matches[site['site']]
-                    # Enhance matches with supplementary data
-                    enhanced_matches = enhance_structural_matches(raw_matches, site['site'])
-                    # Add to site
-                    site['structural_matches'] = enhanced_matches
-        except Exception as e:
-            logger.warning(f"Error finding structural matches: {e}")
-            # Continue without matches
         
         return jsonify(phosphosites)
     except Exception as e:
@@ -605,7 +562,7 @@ def api_phosphosites(uniprot_id):
 def api_structure(uniprot_id):
     """API endpoint for protein structure."""
     try:
-        structure = pe.data.get_alphafold_structure(uniprot_id)
+        structure = get_alphafold_structure(uniprot_id)
         if not structure:
             return jsonify({'error': 'Structure not found'}), 404
         
@@ -641,14 +598,6 @@ def phosphosite_analysis():
     import os
     from flask import request, render_template
     
-    # Import phospho_analyzer functions
-    from protein_explorer.analysis.phospho_analyzer import (
-        analyze_protein, get_phosphosite_data, enhance_phosphosite, enhance_structural_matches
-    )
-    
-    # Import enhanced table function
-    from protein_explorer.analysis.enhanced_table import enhance_phosphosite_table
-    
     # Initialize variables
     results = None
     error = None
@@ -662,25 +611,91 @@ def phosphosite_analysis():
             return render_template('phosphosite.html', error="Please enter an identifier")
         
         try:
-            # Find the data file
-            parquet_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
-                         'Combined_Kinome_10A_Master_Filtered_2.feather')
-
-            # Run the full analysis with supplementary data
-            results = analyze_protein(identifier, id_type, parquet_file)
+            # Get protein data
+            if id_type.lower() == 'uniprot':
+                protein_info = {"uniprot_id": identifier, "gene_symbol": "Unknown", "name": "Unknown Protein"}
+                try:
+                    protein_data = get_protein_by_id(uniprot_id=identifier)
+                    protein_info = {
+                        "uniprot_id": identifier,
+                        "gene_symbol": protein_data.get("gene_symbol", "Unknown"),
+                        "name": protein_data.get("metadata", {}).get("proteinDescription", {}).get("recommendedName", {}).get("fullName", {}).get("value", "Unknown Protein")
+                    }
+                except Exception as e:
+                    logger.warning(f"Error getting detailed protein info: {e}")
+            else:
+                # Get UniProt ID from gene symbol
+                try:
+                    pre_filt_id = get_uniprot_id_from_gene(identifier)
+                    protein_data = get_protein_by_id(pre_filt_id)
+                    protein_info = {
+                        "uniprot_id": pre_filt_id,
+                        "gene_symbol": identifier,
+                        "name": protein_data.get("metadata", {}).get("proteinDescription", {}).get("recommendedName", {}).get("fullName", {}).get("value", "Unknown Protein")
+                    }
+                except Exception as e:
+                    logger.error(f"Error getting protein from gene symbol: {e}")
+                    return render_template('phosphosite.html', error=f"Could not find protein with gene symbol: {identifier}")
             
-            # Use enhanced table for the phosphosites
-            if results and 'phosphosites' in results and results['phosphosites']:
-                # Create enhanced HTML for the phosphosites
-                phosphosites_html = enhance_phosphosite_table(
-                    results['phosphosites'], 
-                    results['protein_info']['uniprot_id']
-                )
+            # Get phosphosites
+            phosphosites = get_all_phosphosites(protein_info["uniprot_id"])
+            
+            if not phosphosites:
+                # Fall back to direct analysis if no sites found in database
+                sequence = None
+                structure = None
                 
-                # Add the HTML to the results
-                results['phosphosites_html'] = phosphosites_html
+                try:
+                    # Get sequence and structure
+                    protein_data = get_protein_by_id(uniprot_id=protein_info["uniprot_id"])
+                    sequence = protein_data.get('metadata', {}).get('sequence', {}).get('value')
+                    structure = get_alphafold_structure(protein_info["uniprot_id"])
+                    
+                    if sequence and structure:
+                        phosphosites = analyze_phosphosites(sequence, structure, protein_info["uniprot_id"])
+                        logger.info(f"Analyzed {len(phosphosites)} phosphosites directly")
+                    else:
+                        logger.warning("Missing sequence or structure for direct analysis")
+                except Exception as e:
+                    logger.error(f"Error in direct phosphosite analysis: {e}")
             
-            # Return results including enhanced data
+            # Get structural matches for phosphosites
+            structural_matches = {}
+            if phosphosites:
+                try:
+                    structural_matches = find_structural_matches(
+                        protein_info["uniprot_id"], 
+                        phosphosites
+                    )
+                    
+                    # Enhance with supplementary data
+                    for site, matches in structural_matches.items():
+                        if matches:
+                            structural_matches[site] = enhance_structural_matches(matches, site)
+                except Exception as e:
+                    logger.error(f"Error finding structural matches: {e}")
+            
+            # Create enhanced HTML for the phosphosites
+            phosphosites_html = None
+            try:
+                from protein_explorer.analysis.enhanced_table import enhance_phosphosite_table
+                phosphosites_html = enhance_phosphosite_table(
+                    phosphosites, 
+                    protein_info["uniprot_id"]
+                )
+            except Exception as e:
+                logger.error(f"Error creating enhanced table: {e}")
+                
+            # Compile results
+            results = {
+                'protein_info': protein_info,
+                'phosphosites': phosphosites,
+                'phosphosites_html': phosphosites_html,
+                'structural_matches': structural_matches,
+                'error': None
+            }
+            
+            # Return results
             return render_template('phosphosite.html', 
                                   protein_info=results['protein_info'],
                                   phosphosites=results['phosphosites'],
@@ -689,7 +704,7 @@ def phosphosite_analysis():
                                   error=results.get('error'))
                 
         except Exception as e:
-            print(f"Error in phosphosite analysis: {e}")
+            logger.error(f"Error in phosphosite analysis: {e}")
             error = str(e)
             return render_template('phosphosite.html', error=error)
     
@@ -755,18 +770,25 @@ def api_sequence_conservation(site_id):
             
             # Try to get site data with motif
             try:
-                # Get all sites for the protein
-                from protein_explorer.analysis.phospho_analyzer import get_phosphosites
-                sites = get_phosphosites(uniprot_id)
+                # Get phosphosite data directly using DB integration
+                site_data = get_phosphosite_data(site_id)
+                if site_data and 'SITE_+/-7_AA' in site_data:
+                    query_motif = site_data['SITE_+/-7_AA']
+                elif site_data and 'motif' in site_data:
+                    query_motif = site_data['motif']
                 
-                # Find the specific site
-                for site in sites:
-                    if site['resno'] == site_number:
-                        query_motif = site.get('motif')
-                        break
-            except:
-                # If that fails, try direct motif lookup
-                pass
+                # If not found in DB, try to get from all sites
+                if not query_motif:
+                    # Get all sites for the protein
+                    all_sites = get_all_phosphosites(uniprot_id)
+                    
+                    # Find the specific site
+                    for site in all_sites:
+                        if site.get('resno') == site_number:
+                            query_motif = site.get('motif')
+                            break
+            except Exception as e:
+                logger.warning(f"Error retrieving motif for {site_id}: {e}")
         
         # Get sequence matches
         matches = find_sequence_matches(site_id, top_n=top_n, min_similarity=min_similarity)
@@ -793,7 +815,7 @@ def site_detail(uniprot_id, site):
     """Display detailed information about a specific phosphorylation site with enhanced supplementary data."""
     try:
         # Get protein data
-        protein_data = pe.data.get_protein_by_id(uniprot_id=uniprot_id)
+        protein_data = get_protein_by_id(uniprot_id=uniprot_id)
         
         # Get the sequence from metadata
         sequence = protein_data.get('metadata', {}).get('sequence', {}).get('value')
@@ -801,7 +823,7 @@ def site_detail(uniprot_id, site):
             return render_template('error.html', error=f"Protein sequence not found for {uniprot_id}")
             
         # Get structure
-        structure = pe.data.get_alphafold_structure(uniprot_id)
+        structure = get_alphafold_structure(uniprot_id)
         if not structure:
             return render_template('error.html', error=f"Protein structure not found for {uniprot_id}")
         
@@ -817,8 +839,7 @@ def site_detail(uniprot_id, site):
         site_id = f"{uniprot_id}_{site_number}"
         
         # Get supplementary data for this site
-        from protein_explorer.analysis.phospho_analyzer import get_phosphosite_data, enhance_phosphosite
-        site_data = pe.db.db_integration.get_phosphosite_data(site_id)
+        site_data = get_phosphosite_data(site_id)
         
         # If site_data is None, create a minimal site data dictionary
         if not site_data:
@@ -829,12 +850,15 @@ def site_detail(uniprot_id, site):
                 'siteType': site_type
             }
         
-        # Analyze phosphosites
-        from protein_explorer.analysis.phospho import analyze_phosphosites
-        all_phosphosites = analyze_phosphosites(sequence, structure, uniprot_id)
+        # Get all phosphosites to find the specific site
+        all_phosphosites = get_all_phosphosites(uniprot_id)
+        
+        # If no phosphosites from DB, analyze from structure
+        if not all_phosphosites:
+            all_phosphosites = analyze_phosphosites(sequence, structure, uniprot_id)
         
         # Find the specific site
-        site_data_from_analysis = next((s for s in all_phosphosites if s['site'] == site), None)
+        site_data_from_analysis = next((s for s in all_phosphosites if s.get('site') == site), None)
         if site_data_from_analysis:
             # Merge with existing site_data
             for key, value in site_data_from_analysis.items():
@@ -842,11 +866,17 @@ def site_detail(uniprot_id, site):
                     site_data[key] = value
         
         # Find structural matches
-        from protein_explorer.analysis.phospho_analyzer import find_structural_matches, enhance_structural_matches
         structural_matches = []
         try:
-            # Get raw matches
-            all_matches =  pe.db.db_integration.find_structural_matches(uniprot_id, [site_data], top_n=None)
+            # Create basic site data for structural match search if needed
+            basic_site_data = {
+                'site': site,
+                'resno': site_number,
+                'siteType': site_type
+            }
+            
+            # Get structural matches with database integration
+            all_matches = find_structural_matches(uniprot_id, [basic_site_data], top_n=None)
             raw_matches = all_matches.get(site, [])
             
             # Filter out self-matches
@@ -869,22 +899,14 @@ def site_detail(uniprot_id, site):
         )
         
         # Create specialized visualizations
-        from protein_explorer.visualization.network import create_phosphosite_network
-        from protein_explorer.analysis.phospho_analyzer import (
-            create_comparative_motif_visualization,
-            enhance_site_visualization,
-            analyze_residue_distributions,
-            analyze_phosphosite_context
-        )
-        
-        # 1. Network visualization
+        # Network visualization
         try:
             network_html = create_phosphosite_network(site, structural_matches, site_data)
         except Exception as e:
             logger.error(f"Error creating network visualization: {e}")
             network_html = f"<div class='alert alert-warning'>Error creating network visualization: {str(e)}</div>"
             
-        # 2. Comparative motif visualization
+        # Comparative motif visualization
         try:
             if structural_matches and 'motif' in site_data:
                 motif_html = create_comparative_motif_visualization(site_data, structural_matches)
@@ -894,7 +916,7 @@ def site_detail(uniprot_id, site):
             logger.error(f"Error creating motif visualization: {e}")
             motif_html = f"<div class='alert alert-warning'>Error creating motif visualization: {str(e)}</div>"
             
-        # 3. Residue distribution analysis
+        # Residue distribution analysis
         try:
             if structural_matches:
                 distribution_data = analyze_residue_distributions(structural_matches)
@@ -904,14 +926,14 @@ def site_detail(uniprot_id, site):
             logger.error(f"Error analyzing residue distributions: {e}")
             distribution_data = None
             
-        # 4. Enhanced 3D visualization
+        # Enhanced 3D visualization
         try:
             enhanced_3d_html = enhance_site_visualization(uniprot_id, site, site_data)
         except Exception as e:
             logger.error(f"Error creating enhanced 3D visualization: {e}")
             enhanced_3d_html = f"<div class='alert alert-warning'>Error creating enhanced 3D visualization: {str(e)}</div>"
             
-        # 5. Structural context analysis
+        # Structural context analysis
         try:
             context_data = analyze_phosphosite_context(structure, site_number, site_type)
         except Exception as e:
@@ -925,15 +947,8 @@ def site_detail(uniprot_id, site):
         sequence_motif_html = None
         
         try:
-            # Get sequence similarity matches
+            # Get sequence similarity matches using DB integration
             logger.info(f"Finding sequence matches for {site_id}")
-            
-            from protein_explorer.analysis.sequence_analyzer import (
-                find_sequence_matches,
-                analyze_motif_conservation,
-                create_sequence_network_data,
-                create_sequence_motif_visualization
-            )
             
             sequence_matches = find_sequence_matches(site_id, top_n=200, min_similarity=0.4)
             logger.info(f"Found {len(sequence_matches)} sequence matches")
@@ -955,7 +970,9 @@ def site_detail(uniprot_id, site):
                     sequence_matches,
                     query_motif=site_data.get('motif')
                 )
-                logger.info(f"Created conservation analysis with {sequence_conservation['motif_count']} motifs")
+                
+                if sequence_conservation and 'motif_count' in sequence_conservation:
+                    logger.info(f"Created conservation analysis with {sequence_conservation['motif_count']} motifs")
                 
                 # Create sequence motif visualization
                 sequence_motif_html = create_sequence_motif_visualization(
@@ -981,25 +998,6 @@ def site_detail(uniprot_id, site):
         sequence_network_kinase_data = {}
         
         try:
-            # Import kinase prediction functions
-            from protein_explorer.analysis.kinase_predictor import (
-                get_site_kinase_scores,
-                predict_kinases,
-                get_heatmap_data,
-                get_known_kinase_info,
-                categorize_kinases_by_family
-            )
-            
-            # Import network-based kinase prediction functions
-            from protein_explorer.analysis.network_kinase_predictor import (
-                get_similar_sites, 
-                compute_aggregated_kinase_scores, 
-                predict_kinases_network,
-                get_network_heatmap_data, 
-                get_network_kinase_comparison, 
-                get_kinase_family_distribution_network
-            )
-            
             # Standard structural kinase prediction
             struct_scores = get_site_kinase_scores(site_id, 'structure')
             if struct_scores and 'scores' in struct_scores:
@@ -1069,7 +1067,7 @@ def site_detail(uniprot_id, site):
                 if structure_network_kinases:
                     # Get similar sites
                     struct_similar_sites = get_similar_sites(
-                        site_id, uniprot_id, site_data,
+                        site_id,
                         similarity_threshold=0.6, rmsd_threshold=3.0
                     )
                     
@@ -1110,7 +1108,7 @@ def site_detail(uniprot_id, site):
                 if sequence_network_kinases:
                     # Get similar sites
                     seq_similar_sites = get_similar_sites(
-                        site_id, uniprot_id, site_data,
+                        site_id,
                         similarity_threshold=0.6, rmsd_threshold=3.0
                     )
                     
@@ -1341,234 +1339,6 @@ def analyze_motif(motif: str, site_type: str, site_number: int) -> Dict:
         "potential_kinases": potential_kinases
     }
 
-
-def create_site_focused_model(structure_data, residue_number, residue_type):
-    """
-    Create a 3D model visualization focused on a specific residue.
-    Highlights the residue and its surrounding environment.
-    Enhanced version with better color coding and structural context.
-    """
-    # Use the existing visualize_structure function but add a highlight for the specific residue
-    import base64
-    
-    # Base64 encode the PDB data
-    pdb_base64 = base64.b64encode(structure_data.encode()).decode()
-    
-    # Create a customized version of the NGL viewer script that focuses on the site
-    js_code = f"""
-    <style>
-        .site-viewer {{
-            width: 100%;
-            height: 400px;
-            position: relative;
-        }}
-        .site-info-panel {{
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background-color: rgba(255, 255, 255, 0.9);
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            padding: 8px;
-            font-size: 14px;
-            z-index: 100;
-        }}
-        .aa-legend {{
-            position: absolute;
-            bottom: 10px;
-            right: 10px;
-            background-color: rgba(255, 255, 255, 0.9);
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            padding: 8px;
-            font-size: 12px;
-            z-index: 100;
-        }}
-        .aa-group {{
-            display: flex;
-            align-items: center;
-            margin-bottom: 3px;
-        }}
-        .aa-color {{
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 5px;
-        }}
-    </style>
-    
-    <div class="site-viewer">
-        <div id="site-viewer-container" style="width: 100%; height: 100%;"></div>
-        <div class="site-info-panel">
-            <strong>Site:</strong> {residue_type}{residue_number}<br>
-            <strong>View:</strong> <span id="view-mode" style="cursor:pointer;">Site Environment</span><br>
-            <strong>Mode:</strong> <span id="color-mode" style="cursor:pointer;">Element</span>
-        </div>
-        <div class="aa-legend">
-            <div class="aa-group"><div class="aa-color" style="background-color:#FF4500;"></div> Target Site</div>
-            <div class="aa-group"><div class="aa-color" style="background-color:#87CEFA;"></div> Polar</div>
-            <div class="aa-group"><div class="aa-color" style="background-color:#FFD700;"></div> Non-polar</div>
-            <div class="aa-group"><div class="aa-color" style="background-color:#FF6347;"></div> Acidic</div>
-            <div class="aa-group"><div class="aa-color" style="background-color:#98FB98;"></div> Basic</div>
-        </div>
-    </div>
-    
-    <script src="https://cdn.jsdelivr.net/gh/arose/ngl@v2.0.0-dev.37/dist/ngl.js"></script>
-    <script type="text/javascript">
-        document.addEventListener('DOMContentLoaded', function() {{
-            // Create NGL Stage object
-            var stage = new NGL.Stage('site-viewer-container', {{backgroundColor: "white"}});
-            
-            // Handle window resizing
-            window.addEventListener('resize', function() {{
-                stage.handleResize();
-            }});
-            
-            // Define residue type groupings
-            const aminoAcidGroups = {{
-                polar: ["SER", "THR", "TYR", "CYS", "ASN", "GLN"],
-                nonpolar: ["ALA", "VAL", "ILE", "LEU", "MET", "PHE", "TRP", "PRO", "GLY"],
-                acidic: ["ASP", "GLU"],
-                basic: ["LYS", "ARG", "HIS"]
-            }};
-            
-            // Define colors for each group
-            const groupColors = {{
-                polar: [135/255, 206/255, 250/255],     // Light blue
-                nonpolar: [255/255, 215/255, 0/255],    // Gold
-                acidic: [255/255, 99/255, 71/255],      // Tomato
-                basic: [152/255, 251/255, 152/255]      // Pale green
-            }};
-            
-            // UI elements
-            const viewModeText = document.getElementById('view-mode');
-            const colorModeText = document.getElementById('color-mode');
-            
-            // State variables
-            let isFullView = false;
-            let colorMode = "element";  // "element", "group", "plddt"
-            
-            // Function to determine AA group from residue name
-            function getAminoAcidGroup(resname) {{
-                for (const [group, residues] of Object.entries(aminoAcidGroups)) {{
-                    if (residues.includes(resname)) {{
-                        return group;
-                    }}
-                }}
-                return "other";
-            }}
-            
-            // Function to get color for residue based on its group
-            function colorByType(atom) {{
-                const residue = atom.resname;
-                
-                // Special case for target residue
-                if (atom.resno === {residue_number} && atom.resname.includes("{residue_type}")) {{
-                    return [1.0, 0.27, 0.0];  // #FF4500 orange-red
-                }}
-                
-                // Determine group
-                const group = getAminoAcidGroup(residue);
-                if (group in groupColors) {{
-                    return groupColors[group];
-                }}
-                
-                // Default color for "other"
-                return [0.5, 0.5, 0.5];  // Grey
-            }}
-            
-            // Load PDB data from base64 string
-            var pdbBlob = new Blob([atob('{pdb_base64}')], {{type: 'text/plain'}});
-            
-            // Load the structure
-            stage.loadFile(pdbBlob, {{ext: 'pdb'}}).then(function(component) {{
-                // Get target selection
-                const siteSelection = "{residue_number} and .{residue_type}";
-                const environmentSelection = siteSelection + " or (" + siteSelection + " around 5)";
-                
-                // State variables
-                let isFullView = false;
-                let colorMode = "element";  // "element" or "type"
-                
-                // Reset button
-                document.getElementById('reset-view-btn')?.addEventListener('click', function() {{
-                    updateRepresentations();
-                }});
-                
-                // Toggle view button
-                viewModeText.addEventListener('click', function() {{
-                    isFullView = !isFullView;
-                    this.textContent = isFullView ? 'Site Focus' : 'Full Protein';
-                    updateRepresentations();
-                }});
-                
-                // Toggle color button
-                colorModeText.addEventListener('click', function() {{
-                    colorMode = colorMode === "element" ? "type" : "element";
-                    this.textContent = colorMode === "element" ? 'Color by Type' : 'Color by Element';
-                    updateRepresentations();
-                }});
-                
-                // Update all representations based on current state
-                function updateRepresentations() {{
-                    // Remove all existing representations
-                    component.removeAllRepresentations();
-                    
-                    // Add cartoon representation for entire protein
-                    component.addRepresentation("cartoon", {{
-                        color: colorMode === "type" ? colorByType : "chainid",
-                        opacity: 0.7,
-                        smoothSheet: true
-                    }});
-                    
-                    // Add ball and stick for target residue
-                    component.addRepresentation("ball+stick", {{
-                        sele: siteSelection,
-                        color: colorMode === "type" ? colorByType : "element",
-                        aspectRatio: 1.5,
-                        scale: 1.2
-                    }});
-                    
-                    // Add licorice for environment (if not full view)
-                    if (!isFullView) {{
-                        component.addRepresentation("licorice", {{
-                            sele: environmentSelection + " and not " + siteSelection,
-                            color: colorMode === "type" ? colorByType : "element",
-                            opacity: 0.8,
-                            scale: 0.8
-                        }});
-                        
-                        // Add labels
-                        component.addRepresentation("label", {{
-                            sele: environmentSelection,
-                            color: "#333333",
-                            labelType: "format",
-                            labelFormat: "{{resname}}{{resno}}",
-                            labelGrouping: "residue",
-                            attachment: "middle-center",
-                            showBackground: true,
-                            backgroundColor: "white",
-                            backgroundOpacity: 0.5
-                        }});
-                    }}
-                    
-                    // Set view
-                    if (isFullView) {{
-                        component.autoView();
-                    }} else {{
-                        component.autoView(environmentSelection, 2000);
-                    }}
-                }}
-                
-                // Initial setup
-                updateRepresentations();
-            }});
-        }});
-    </script>
-    """
-    
-    return js_code
-
 @app.route('/site-search', methods=['GET', 'POST'])
 def site_search():
     """Search for a specific phosphorylation site."""
@@ -1602,7 +1372,7 @@ def api_kinases(site_id):
         score_type = request.args.get('type', 'structure')
         top_n = int(request.args.get('top_n', 10))
         
-        # Get kinase scores
+        # Get kinase scores using integration function
         scores = get_site_kinase_scores(site_id, score_type)
         if not scores or 'scores' not in scores:
             return jsonify({'error': f'No {score_type} kinase scores found for {site_id}'}), 404
@@ -1713,7 +1483,7 @@ def api_network_kinases(site_id):
 # Add an endpoint to update network predictions with new thresholds
 @app.route('/api/update-network-kinases/<site_id>', methods=['POST'])
 def update_network_kinases(site_id):
-    """Update network-based kinase predictions with new thresholds with enhanced error handling."""
+    """Update network-based kinase predictions with new thresholds."""
     try:
         data = request.get_json()
         if not data:
@@ -1732,9 +1502,7 @@ def update_network_kinases(site_id):
             
         threshold = float(data.get(threshold_param, threshold_default))
         
-        logger.info(f"Updating {score_type} network kinase predictions with {threshold_param}={threshold}")
-        
-        # Common parameters for all function calls
+        # Set common parameters 
         kwargs = {
             'site_id': site_id,
             'top_n': top_n,
@@ -1744,75 +1512,38 @@ def update_network_kinases(site_id):
         # Add the appropriate threshold parameter
         if score_type == 'structure':
             kwargs['rmsd_threshold'] = threshold
-            # Use default for similarity
-            kwargs['similarity_threshold'] = 0.6
+            kwargs['similarity_threshold'] = 0.6  # default
         else:
             kwargs['similarity_threshold'] = threshold
-            # Use default for RMSD
-            kwargs['rmsd_threshold'] = 3.0
+            kwargs['rmsd_threshold'] = 3.0  # default
         
-        # Get updated predictions
+        # Get updated predictions using integration functions
         network_kinases = predict_kinases_network(**kwargs)
+        similar_sites = get_similar_sites(site_id, similarity_threshold=kwargs.get('similarity_threshold'), 
+                                         rmsd_threshold=kwargs.get('rmsd_threshold'))
+        heatmap_data = get_network_heatmap_data(**kwargs)
+        family_distribution = get_kinase_family_distribution_network(**kwargs)
         
-        # Get updated similar sites
-        similar_sites = get_similar_sites(site_id, **{k: v for k, v in kwargs.items() if k != 'top_n'})
-        
-        # Get updated heatmap data with enhanced function
-        try:
-            heatmap_data = get_network_heatmap_data(**kwargs)
-            
-            # Log heatmap data stats to debug any issues
-            logger.info(f"Heatmap data: {len(heatmap_data['sites'])} sites, {len(heatmap_data['kinases'])} kinases, {len(heatmap_data['scores'])} scores")
-            
-            # Add family distribution for radar chart
-            family_distribution = get_kinase_family_distribution_network(
-                site_id, score_type=score_type,
-                similarity_threshold=kwargs.get('similarity_threshold', 0.6),
-                rmsd_threshold=kwargs.get('rmsd_threshold', 3.0)
-            )
-            
-            # Return updated data with full response
-            result = {
-                'site_id': site_id,
-                'score_type': score_type,
-                'top_kinases': network_kinases,
-                'heatmap': heatmap_data,
-                'kinase_families': family_distribution,
-                'site_count': len(similar_sites),
-                'rmsd_threshold': kwargs.get('rmsd_threshold'),
-                'similarity_threshold': kwargs.get('similarity_threshold')
-            }
-            
-            return jsonify(result)
-            
-        except Exception as heatmap_error:
-            # Return basic data if heatmap fails
-            logger.error(f"Error generating heatmap: {heatmap_error}")
-            
-            return jsonify({
-                'site_id': site_id,
-                'score_type': score_type,
-                'top_kinases': network_kinases,
-                'heatmap': {
-                    'sites': [site_id],  # Include at least the query site
-                    'kinases': [k['kinase'] for k in network_kinases[:top_n]],
-                    'scores': []  # Empty scores as fallback
-                },
-                'site_count': len(similar_sites),
-                'rmsd_threshold': kwargs.get('rmsd_threshold'),
-                'similarity_threshold': kwargs.get('similarity_threshold'),
-                'error': f"Heatmap generation failed: {str(heatmap_error)}"
-            })
-            
+        # Return updated data
+        return jsonify({
+            'site_id': site_id,
+            'score_type': score_type,
+            'top_kinases': network_kinases,
+            'heatmap': heatmap_data,
+            'kinase_families': family_distribution,
+            'site_count': len(similar_sites),
+            'rmsd_threshold': kwargs.get('rmsd_threshold'),
+            'similarity_threshold': kwargs.get('similarity_threshold')
+        })
     except Exception as e:
         logger.error(f"Error updating network kinase predictions: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return jsonify({
-            'error': str(e),
-            'traceback': traceback.format_exc()
-        }), 500
+        return jsonify({'error': str(e)}), 500
 
+@app.route('/api/health/database', methods=['GET'])
+def database_health():
+    """Check database health."""
+    health_status = check_database_health()
+    return jsonify(health_status)
 
 @app.route('/faq')
 def faq():
