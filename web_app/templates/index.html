@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Protein Explorer</title>
+    <title>KinoPlex</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
     <style>
@@ -273,7 +273,7 @@
     <nav class="navbar navbar-expand-lg navbar-light">
         <div class="container">
             <a class="navbar-brand" href="/">
-                <i class="bi bi-box me-2"></i>Protein Explorer
+                <i class="bi bi-box me-2"></i>KinoPlex
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -286,9 +286,7 @@
                     <li class="nav-item">
                         <a class="nav-link" href="/search">Search</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/analyze">Analyze</a>
-                    </li>
+                
                     <li class="nav-item">
                         <a class="nav-link" href="/phosphosite">Phosphosite Analysis</a>
                     </li>
@@ -308,15 +306,13 @@
         <div class="container hero-content">
             <div class="row align-items-center">
                 <div class="col-lg-7">
-                    <h1 class="display-3">Explore Protein Structures and Interactions</h1>
-                    <p class="lead">A comprehensive platform for visualizing AlphaFold protein structures, analyzing protein-protein interaction networks, and exploring phosphorylation sites.</p>
+                    <h1 class="display-3">A Comprehensive Predicted Structural Atlas of the Human Kinome</h1>
+                    <p class="lead">A comprehensive repository for exploring, visualizing, and analyzing 80,000 known human phosphosites, > 2,000,000 STY Sites throughout the Phosphotome, and 6.4 Billion 3-Dimensional Structural Similarity Scores Computed (and counting)....</p>
                     <div class="d-flex flex-wrap gap-3">
                         <a href="/search" class="btn btn-primary btn-lg">
                             <i class="bi bi-search me-2"></i>Search Proteins
                         </a>
-                        <a href="/analyze" class="btn btn-outline-light btn-lg">
-                            <i class="bi bi-graph-up me-2"></i>Analyze Multiple Proteins
-                        </a>
+                        
                     </div>
                 </div>
             </div>
@@ -429,62 +425,15 @@
         </div>
     </section>
 
-    <!-- Examples -->
-    <section class="example-section">
-        <div class="container">
-            <h2 class="section-title display-5">Explore Capabilities</h2>
-            
-            <div class="row g-4">
-                <div class="col-md-6 col-lg-3">
-                    <div class="card example-card">
-                        <div class="card-body">
-                            <h5 class="card-title">Structure Visualization</h5>
-                            <p class="card-text">Explore high-resolution 3D structures of proteins predicted by AlphaFold.</p>
-                            <a href="/protein/P53_HUMAN" class="btn btn-primary btn-sm">View Example</a>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="col-md-6 col-lg-3">
-                    <div class="card example-card">
-                        <div class="card-body">
-                            <h5 class="card-title">Network Analysis</h5>
-                            <p class="card-text">Visualize protein interaction networks and discover relationships.</p>
-                            <a href="/network/P53_HUMAN" class="btn btn-primary btn-sm">View Example</a>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="col-md-6 col-lg-3">
-                    <div class="card example-card">
-                        <div class="card-body">
-                            <h5 class="card-title">Multiple Protein Analysis</h5>
-                            <p class="card-text">Compare proteins and find common interactors or structural features.</p>
-                            <a href="/analyze" class="btn btn-primary btn-sm">Try It</a>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="col-md-6 col-lg-3">
-                    <div class="card example-card">
-                        <div class="card-body">
-                            <h5 class="card-title">Phosphosite Analysis</h5>
-                            <p class="card-text">Analyze potential phosphorylation sites and structural similarities.</p>
-                            <a href="/phosphosite" class="btn btn-primary btn-sm">Explore</a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
+    
 
     <!-- Footer -->
     <footer class="footer">
         <div class="container">
             <div class="row">
                 <div class="col-lg-4 mb-4 mb-lg-0">
-                    <h5>Protein Explorer</h5>
-                    <p>A comprehensive tool for exploring protein structures, interactions, and phosphorylation sites, powered by AlphaFold and other bioinformatics resources.</p>
+                    <h5>KinoPlex</h5>
+                    <p>A first-of-its-kind end-to-end Structural Atlas of the Human Kinome</p>
                 </div>
                 
                 <div class="col-md-4 col-lg-2 mb-4 mb-lg-0">
@@ -492,7 +441,6 @@
                     <ul class="list-unstyled">
                         <li class="mb-2"><a href="/">Home</a></li>
                         <li class="mb-2"><a href="/search">Search</a></li>
-                        <li class="mb-2"><a href="/analyze">Analyze</a></li>
                         <li class="mb-2"><a href="/phosphosite">Phosphosite Analysis</a></li>
                     </ul>
                 </div>
